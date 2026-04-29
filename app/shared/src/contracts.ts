@@ -36,6 +36,7 @@ export interface AudioChunk {
   id: string;
   chapterId: string;
   url: string;
+  downloadUrl?: string;
   durationMs: number;
   cached: boolean;
 }
@@ -115,6 +116,17 @@ export interface PlayerParams {
 export interface PlayerResponse {
   documentId: string;
   audio: AudioChunk[];
+  resumePositionMs: number;
+}
+
+export interface PlayerResumeRequest {
+  chapterId: string;
+  profileHash: string;
+  playbackPositionMs: number;
+}
+
+export interface PlayerResumeResponse {
+  saved: boolean;
   resumePositionMs: number;
 }
 

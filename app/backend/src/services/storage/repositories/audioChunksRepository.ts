@@ -38,6 +38,7 @@ export interface AudioChunksRepository {
   upsert(record: AudioChunkRecord): void;
   listForDocument(documentId: string): AudioChunk[];
   getById(id: string): AudioChunkStatusRow | null;
+  getByIdForDocument(documentId: string, id: string): AudioChunkStatusRow | null;
   clearAll(): void;
 }
 
@@ -74,7 +75,7 @@ export function createAudioChunksRepository(db: DatabaseSync): AudioChunksReposi
   const listForDocumentStatement = db.prepare(
     `SELECT id, chapter_id, file_path, duration_ms, status
      FROM audio_chunks
-     WHERE doc_id = ?
+     WHERE doc_id = ? AND status = 'ready'
      ORDER BY chapter_id ASC, chunk_index ASC`
   );
   const getByIdStatement = db.prepare(
@@ -84,6 +85,12 @@ export function createAudioChunksRepository(db: DatabaseSync): AudioChunksReposi
      LIMIT 1`
   );
   const clearAllStatement = db.prepare(`DELETE FROM audio_chunks`);
+  const getByIdForDocumentStatement = db.prepare(
+    `SELECT id, status, file_path, duration_ms
+     FROM audio_chunks
+     WHERE doc_id = ? AND id = ?
+     LIMIT 1`
+  );
 
   return {
     upsert(record) {
@@ -112,6 +119,9 @@ export function createAudioChunksRepository(db: DatabaseSync): AudioChunksReposi
     },
     getById(id) {
       return getDbValue<AudioChunkStatusRow>(getByIdStatement, id);
+    },
+    getByIdForDocument(documentId, id) {
+      return getDbValue<AudioChunkStatusRow>(getByIdForDocumentStatement, documentId, id);
     },
     clearAll() {
       clearAllStatement.run();

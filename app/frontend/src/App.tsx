@@ -87,7 +87,7 @@ export function App() {
       );
       break;
     case "reader":
-      content = <ReaderPage />;
+      content = <ReaderPage documents={libraryDocuments} />;
       break;
     case "settings":
       content = <SettingsPage />;
