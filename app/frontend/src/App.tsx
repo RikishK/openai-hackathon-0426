@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getLibrary } from "./api/client";
 import { IngestPage } from "./pages/IngestPage";
 import { LibraryPage } from "./pages/LibraryPage";
 import { ReaderPage } from "./pages/ReaderPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { upsertLibraryDocument, type LibraryDocumentEntry } from "./pages/libraryState";
 
 type View = "library" | "ingest" | "reader" | "settings";
 
@@ -15,14 +17,74 @@ const views: { id: View; label: string }[] = [
 
 export function App() {
   const [view, setView] = useState<View>("library");
+  const [libraryDocuments, setLibraryDocuments] = useState<LibraryDocumentEntry[]>([]);
+  const [isLibraryLoading, setIsLibraryLoading] = useState(true);
+  const [libraryErrorMessage, setLibraryErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadLibrary() {
+      try {
+        const library = await getLibrary();
+        if (!isMounted) {
+          return;
+        }
+
+        setLibraryDocuments(
+          library.documents.map((document) => ({
+            document,
+            chapters: []
+          }))
+        );
+        setLibraryErrorMessage(null);
+      } catch (error) {
+        if (!isMounted) {
+          return;
+        }
+
+        if (!(error instanceof Error)) {
+          throw error;
+        }
+
+        setLibraryErrorMessage(`Unable to load library: ${error.message}`);
+      } finally {
+        if (isMounted) {
+          setIsLibraryLoading(false);
+        }
+      }
+    }
+
+    void loadLibrary();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  function handleDocumentIngested(document: LibraryDocumentEntry["document"], chapters: LibraryDocumentEntry["chapters"]) {
+    setLibraryDocuments((current) => upsertLibraryDocument(current, document, chapters));
+    setLibraryErrorMessage(null);
+  }
 
   let content;
   switch (view) {
     case "library":
-      content = <LibraryPage />;
+      content = (
+        <LibraryPage
+          documents={libraryDocuments}
+          isLoading={isLibraryLoading}
+          errorMessage={libraryErrorMessage}
+        />
+      );
       break;
     case "ingest":
-      content = <IngestPage />;
+      content = (
+        <IngestPage
+          onIngested={handleDocumentIngested}
+          onViewLibrary={() => setView("library")}
+        />
+      );
       break;
     case "reader":
       content = <ReaderPage />;

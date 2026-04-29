@@ -62,9 +62,98 @@ body {
   padding: 16px;
 }
 
+input,
+textarea,
+select,
+button {
+  font: inherit;
+}
+
+input,
+textarea,
+select {
+  border: 1px solid #aac1d9;
+  border-radius: 8px;
+  padding: 8px 10px;
+  width: 100%;
+  max-width: 100%;
+}
+
+button {
+  border: 1px solid #aac1d9;
+  background-color: #ffffff;
+  color: inherit;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
 .stack {
   display: grid;
   gap: 12px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.spread {
+  justify-content: space-between;
+}
+
+.chapter-list,
+.library-list,
+.library-chapters {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.chapter-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.chapter-option input {
+  width: auto;
+  margin-top: 3px;
+}
+
+.library-list {
+  list-style: none;
+  padding-left: 0;
+}
+
+.library-item {
+  border: 1px solid #d6e1ec;
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.library-item h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.library-item p {
+  margin: 0;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #7d9ab8;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
 }
 
 @media (max-width: 640px) {
