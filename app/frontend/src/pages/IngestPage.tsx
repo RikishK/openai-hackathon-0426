@@ -8,35 +8,65 @@ interface IngestPageProps {
   onViewLibrary: () => void;
 }
 
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
+const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-    reader.onload = () => {
-      if (typeof reader.result !== "string") {
-        reject(new Error("FileReader did not return a data URL string"));
-        return;
+function bytesToBase64(bytes: Uint8Array): string {
+  const parts: string[] = [];
+
+  for (let index = 0; index < bytes.length; index += 3) {
+    const first = bytes[index];
+    const second = bytes[index + 1];
+    const third = bytes[index + 2];
+
+    if (first === undefined) {
+      break;
+    }
+
+    const firstChar = BASE64_ALPHABET[(first & 0b11111100) >> 2];
+    if (firstChar === undefined) {
+      throw new Error("Invalid base64 conversion state for first character");
+    }
+
+    if (second === undefined) {
+      const secondChar = BASE64_ALPHABET[(first & 0b00000011) << 4];
+      if (secondChar === undefined) {
+        throw new Error("Invalid base64 conversion state for second character");
       }
 
-      resolve(reader.result);
-    };
+      parts.push(`${firstChar}${secondChar}==`);
+      continue;
+    }
 
-    reader.onerror = () => {
-      reject(reader.error ?? new Error("Unable to read file"));
-    };
+    const secondChar = BASE64_ALPHABET[((first & 0b00000011) << 4) | ((second & 0b11110000) >> 4)];
+    if (secondChar === undefined) {
+      throw new Error("Invalid base64 conversion state for second character");
+    }
 
-    reader.readAsDataURL(file);
-  });
+    if (third === undefined) {
+      const thirdChar = BASE64_ALPHABET[(second & 0b00001111) << 2];
+      if (thirdChar === undefined) {
+        throw new Error("Invalid base64 conversion state for third character");
+      }
+
+      parts.push(`${firstChar}${secondChar}${thirdChar}=`);
+      continue;
+    }
+
+    const thirdChar = BASE64_ALPHABET[((second & 0b00001111) << 2) | ((third & 0b11000000) >> 6)];
+    const fourthChar = BASE64_ALPHABET[third & 0b00111111];
+    if (thirdChar === undefined || fourthChar === undefined) {
+      throw new Error("Invalid base64 conversion state for trailing characters");
+    }
+
+    parts.push(`${firstChar}${secondChar}${thirdChar}${fourthChar}`);
+  }
+
+  return parts.join("");
 }
 
 async function toBase64(file: File): Promise<string> {
-  const dataUrl = await readFileAsDataUrl(file);
-  const markerIndex = dataUrl.indexOf(",");
-  if (markerIndex === -1) {
-    throw new Error("Selected file could not be converted to base64");
-  }
-
-  return dataUrl.slice(markerIndex + 1);
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  return bytesToBase64(bytes);
 }
 
 export function IngestPage({ onIngested, onViewLibrary }: IngestPageProps) {
