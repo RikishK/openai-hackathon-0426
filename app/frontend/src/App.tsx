@@ -4,7 +4,7 @@ import { IngestPage } from "./pages/IngestPage";
 import { LibraryPage } from "./pages/LibraryPage";
 import { ReaderPage } from "./pages/ReaderPage";
 import { SettingsPage } from "./pages/SettingsPage";
-import { upsertLibraryDocument, type LibraryDocumentEntry } from "./pages/libraryState";
+import { markGeneratedChapters, upsertLibraryDocument, type LibraryDocumentEntry } from "./pages/libraryState";
 
 type View = "library" | "ingest" | "reader" | "settings";
 
@@ -34,7 +34,8 @@ export function App() {
         setLibraryDocuments(
           library.documents.map((document) => ({
             document,
-            chapters: []
+            chapters: [],
+            generatedChapterIds: []
           }))
         );
         setLibraryErrorMessage(null);
@@ -67,6 +68,10 @@ export function App() {
     setLibraryErrorMessage(null);
   }
 
+  function handleGeneratedScope(documentId: string, chapterIds: string[]) {
+    setLibraryDocuments((current) => markGeneratedChapters(current, documentId, chapterIds));
+  }
+
   let content;
   switch (view) {
     case "library":
@@ -87,7 +92,7 @@ export function App() {
       );
       break;
     case "reader":
-      content = <ReaderPage documents={libraryDocuments} />;
+      content = <ReaderPage documents={libraryDocuments} onGeneratedScope={handleGeneratedScope} />;
       break;
     case "settings":
       content = <SettingsPage />;

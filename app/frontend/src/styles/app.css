@@ -126,6 +126,28 @@ button:disabled {
   margin-top: 3px;
 }
 
+.generation-scope {
+  border: 1px solid #d6e1ec;
+  border-radius: 8px;
+  padding: 10px;
+  margin: 0;
+}
+
+.generation-scope legend {
+  padding: 0 4px;
+  font-weight: 600;
+}
+
+.estimate-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.estimate-grid p {
+  margin: 0;
+}
+
 .library-list {
   list-style: none;
   padding-left: 0;

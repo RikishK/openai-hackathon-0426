@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest";
 import type { PlayableAudioChunk } from "./readerState";
 import {
+  buildChapterScope,
   buildPlaybackSegments,
   getNextSegmentStart,
   getTotalDurationMs,
   resolvePlaybackCursor
 } from "./readerState";
+
+const chapterMetadata = [
+  { id: "ch-1", index: 0, title: "Intro" },
+  { id: "ch-2", index: 1, title: "Deep Dive" },
+  { id: "ch-3", index: 2, title: "Summary" }
+];
 
 const chunks: PlayableAudioChunk[] = [
   {
@@ -84,5 +91,19 @@ describe("readerState", () => {
     expect(getNextSegmentStart(segments, 0)).toBe(1000);
     expect(getNextSegmentStart(segments, 1)).toBe(3500);
     expect(getNextSegmentStart(segments, 2)).toBeNull();
+  });
+
+  it("builds all-chapter scope payload from chapter metadata", () => {
+    expect(buildChapterScope(chapterMetadata, "all", [])).toEqual({
+      mode: "all",
+      chapterIds: ["ch-1", "ch-2", "ch-3"]
+    });
+  });
+
+  it("builds selected scope payload with deduped known chapter ids", () => {
+    expect(buildChapterScope(chapterMetadata, "selected", ["ch-3", "ch-2", "missing", "ch-2"])).toEqual({
+      mode: "selected",
+      chapterIds: ["ch-3", "ch-2"]
+    });
   });
 });

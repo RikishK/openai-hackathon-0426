@@ -1,7 +1,12 @@
 import type {
+  EstimateRequest,
+  EstimateResponse,
+  GenerateRequest,
+  GenerateResponse,
   IngestPdfRequest,
   IngestResponse,
   IngestTextRequest,
+  JobsResponse,
   LibraryResponse,
   PlayerResponse,
   PlayerResumeRequest,
@@ -79,4 +84,33 @@ export async function savePlayerResume(
   });
 
   return parseResponseOrThrow<PlayerResumeResponse>(response);
+}
+
+export async function estimateGeneration(payload: EstimateRequest): Promise<EstimateResponse> {
+  const response = await fetch(`${API_BASE_URL}/estimate`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  return parseResponseOrThrow<EstimateResponse>(response);
+}
+
+export async function generateAudio(payload: GenerateRequest): Promise<GenerateResponse> {
+  const response = await fetch(`${API_BASE_URL}/generate`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  return parseResponseOrThrow<GenerateResponse>(response);
+}
+
+export async function getGenerationJob(jobId: string): Promise<JobsResponse> {
+  const response = await fetch(`${API_BASE_URL}/jobs/${jobId}`);
+  return parseResponseOrThrow<JobsResponse>(response);
 }
