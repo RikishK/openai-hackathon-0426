@@ -61,6 +61,11 @@ export interface IngestUrlRequest {
   url: string;
 }
 
+export interface IngestPdfRequest {
+  title: string;
+  pdfBase64: string;
+}
+
 export interface IngestResponse {
   document: SourceDocument;
   chapters: DocumentChapter[];
