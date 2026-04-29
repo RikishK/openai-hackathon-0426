@@ -7,6 +7,11 @@ import { Agent, fetch as undiciFetch } from "undici";
 const URL_FETCH_TIMEOUT_MS = 12000;
 const MAX_REDIRECTS = 5;
 
+interface UrlExtractorDependencies {
+  fetchImpl?: typeof undiciFetch;
+  lookupImpl?: typeof lookup;
+}
+
 export interface UrlExtractionResult {
   canonicalUrl: string;
   title: string;
@@ -67,7 +72,15 @@ function isGlobalUnicastIpv4(address: string): boolean {
     return false;
   }
 
-  if (a === 192 && b === 0 && (c === 0 || c === 2)) {
+  if (a === 192 && b === 0 && c === 2) {
+    return false;
+  }
+
+  if (a === 192 && b === 0 && c === 0 && (d >= 0 && d <= 8)) {
+    return false;
+  }
+
+  if (a === 192 && b === 0 && c === 0 && d !== 9 && d !== 10) {
     return false;
   }
 
@@ -201,6 +214,30 @@ function isGlobalUnicastIpv6(address: string): boolean {
     return false;
   }
 
+  if ((segments[0] ?? 0) === 0x2001 && (segments[1] ?? 0) === 0x0000) {
+    return false;
+  }
+
+  if (
+    (segments[0] ?? 0) === 0x2001 &&
+    (segments[1] ?? 0) === 0x0002 &&
+    (segments[2] ?? 0) === 0x0000
+  ) {
+    return false;
+  }
+
+  if ((segments[0] ?? 0) === 0x2002) {
+    return false;
+  }
+
+  if ((segments[0] ?? 0) === 0x2001 && ((segments[1] ?? 0) & 0xfff0) === 0x0010) {
+    return false;
+  }
+
+  if ((segments[0] ?? 0) === 0x2001 && ((segments[1] ?? 0) & 0xfff0) === 0x0020) {
+    return false;
+  }
+
   return true;
 }
 
@@ -259,7 +296,7 @@ interface PinnedTarget {
   family: 4 | 6;
 }
 
-async function resolveSafeUrlTarget(url: URL): Promise<PinnedTarget> {
+async function resolveSafeUrlTarget(url: URL, lookupImpl: typeof lookup): Promise<PinnedTarget> {
   const hostname = url.hostname.toLowerCase();
   if (hostname === "localhost" || hostname.endsWith(".localhost")) {
     throw getUnsafeTargetError();
@@ -286,7 +323,7 @@ async function resolveSafeUrlTarget(url: URL): Promise<PinnedTarget> {
 
   let resolved;
   try {
-    resolved = await lookup(hostname, { all: true, verbatim: true });
+    resolved = await lookupImpl(hostname, { all: true, verbatim: true });
   } catch (error) {
     throw new UrlExtractionError(
       "URL_FETCH_FAILED",
@@ -322,7 +359,11 @@ interface FetchHtmlResult {
   sourceHtml: string;
 }
 
-async function fetchWithValidatedRedirects(initialUrl: string, signal: AbortSignal): Promise<FetchHtmlResult> {
+async function fetchWithValidatedRedirects(
+  initialUrl: string,
+  signal: AbortSignal,
+  deps: Required<UrlExtractorDependencies>
+): Promise<FetchHtmlResult> {
   const visited = new Set<string>();
   let currentUrl = initialUrl;
 
@@ -336,7 +377,7 @@ async function fetchWithValidatedRedirects(initialUrl: string, signal: AbortSign
 
     visited.add(currentUrl);
 
-    const pinnedTarget = await resolveSafeUrlTarget(new URL(currentUrl));
+    const pinnedTarget = await resolveSafeUrlTarget(new URL(currentUrl), deps.lookupImpl);
     const agent = new Agent({
       connect: {
         lookup: (_hostname, _options, callback) => {
@@ -347,7 +388,7 @@ async function fetchWithValidatedRedirects(initialUrl: string, signal: AbortSign
 
     let response;
     try {
-      response = await undiciFetch(currentUrl, {
+      response = await deps.fetchImpl(currentUrl, {
         signal,
         redirect: "manual",
         dispatcher: agent,
@@ -434,8 +475,15 @@ async function fetchWithValidatedRedirects(initialUrl: string, signal: AbortSign
     }
 
     await agent.close();
+    if (!response.url) {
+      throw new UrlExtractionError(
+        "URL_FETCH_FAILED",
+        "Could not determine the fetched URL. Please copy and paste the article text manually."
+      );
+    }
+
     return {
-      canonicalUrl: response.url || currentUrl,
+      canonicalUrl: response.url,
       sourceHtml
     };
   }
@@ -447,12 +495,28 @@ async function fetchWithValidatedRedirects(initialUrl: string, signal: AbortSign
 }
 
 export async function extractReadableUrl(rawUrl: string): Promise<UrlExtractionResult> {
+  return extractReadableUrlWithDeps(rawUrl);
+}
+
+export async function extractReadableUrlWithDeps(
+  rawUrl: string,
+  deps: UrlExtractorDependencies = {}
+): Promise<UrlExtractionResult> {
+  const resolvedDeps: Required<UrlExtractorDependencies> = {
+    fetchImpl: deps.fetchImpl ?? undiciFetch,
+    lookupImpl: deps.lookupImpl ?? lookup
+  };
+
   const initialUrl = await validateInputUrl(rawUrl);
   const controller = new AbortController();
   const timeoutHandle = setTimeout(() => controller.abort(), URL_FETCH_TIMEOUT_MS);
 
   try {
-    const { canonicalUrl, sourceHtml } = await fetchWithValidatedRedirects(initialUrl, controller.signal);
+    const { canonicalUrl, sourceHtml } = await fetchWithValidatedRedirects(
+      initialUrl,
+      controller.signal,
+      resolvedDeps
+    );
 
     let article: ReturnType<Readability["parse"]>;
     try {
