@@ -1,7 +1,8 @@
+import type { LibraryResponse } from "@tts-reader/shared";
 import type { FastifyPluginAsync } from "fastify";
 
 export const registerLibraryRoutes: FastifyPluginAsync = async (app) => {
-  app.get("/api/library", async () => ({
+  app.get<{ Reply: LibraryResponse }>("/api/library", async () => ({
     documents: []
   }));
 };
