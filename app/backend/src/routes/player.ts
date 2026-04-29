@@ -8,7 +8,8 @@ export const registerPlayerRoutes: FastifyPluginAsync = async (app) => {
     async (request) => {
       const storage = getStorageContext();
       const { documentId } = request.params;
-      const resumePositionMs = storage.repositories.resumeStates.getLatestPlaybackPositionByDocument(documentId) ?? 0;
+      const savedResumePosition = storage.repositories.resumeStates.getLatestPlaybackPositionByDocument(documentId);
+      const resumePositionMs = savedResumePosition === null ? 0 : savedResumePosition;
 
       return {
         documentId,

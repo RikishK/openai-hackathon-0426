@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS audio_chunks (
   profile_hash TEXT NOT NULL,
   chunk_index INTEGER NOT NULL,
   file_path TEXT NOT NULL,
-  duration_ms INTEGER,
+  duration_ms INTEGER NOT NULL,
   checksum TEXT,
   status TEXT NOT NULL CHECK (status IN ('pending', 'ready', 'failed')),
   sentence_id TEXT,

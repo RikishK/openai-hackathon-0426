@@ -6,7 +6,7 @@ interface AudioChunkRow {
   id: string;
   chapter_id: string;
   file_path: string;
-  duration_ms: number | null;
+  duration_ms: number;
   status: string;
 }
 
@@ -17,7 +17,7 @@ export interface AudioChunkRecord {
   profileHash: string;
   chunkIndex: number;
   filePath: string;
-  durationMs?: number;
+  durationMs: number;
   checksum?: string;
   status: "pending" | "ready" | "failed";
   sentenceId?: string;
@@ -37,7 +37,7 @@ function toAudioChunk(row: AudioChunkRow): AudioChunk {
     id: row.id,
     chapterId: row.chapter_id,
     url: row.file_path,
-    durationMs: row.duration_ms ?? 0,
+    durationMs: row.duration_ms,
     cached: row.status === "ready"
   };
 }
@@ -79,7 +79,7 @@ export function createAudioChunksRepository(db: DatabaseSync): AudioChunksReposi
         record.profileHash,
         record.chunkIndex,
         record.filePath,
-        record.durationMs ?? null,
+        record.durationMs,
         record.checksum ?? null,
         record.status,
         record.sentenceId ?? null,
