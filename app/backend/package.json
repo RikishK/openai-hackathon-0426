@@ -13,10 +13,14 @@
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",
+    "@fastify/multipart": "^10.0.0",
+    "@mozilla/readability": "^0.6.0",
     "@tts-reader/shared": "file:../shared",
-    "fastify": "^5.2.2"
+    "fastify": "^5.2.2",
+    "jsdom": "^29.1.0"
   },
   "devDependencies": {
+    "@types/jsdom": "^28.0.1",
     "tsx": "^4.19.3"
   }
 }
