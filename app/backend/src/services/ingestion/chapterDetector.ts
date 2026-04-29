@@ -54,9 +54,13 @@ function getChapterCandidates(pages: ExtractedPdfPage[]): ChapterCandidate[] {
   return candidates;
 }
 
-export function detectPdfChapters(pages: ExtractedPdfPage[]): ChapterDetectionResult {
+export function detectPdfChapters(pages: ExtractedPdfPage[], totalPages: number): ChapterDetectionResult {
   if (pages.length === 0) {
     throw new Error("Cannot detect chapters from an empty page list");
+  }
+
+  if (!Number.isInteger(totalPages) || totalPages < 1) {
+    throw new Error("Total PDF page count must be a positive integer");
   }
 
   const chapterCandidates = getChapterCandidates(pages);
@@ -73,7 +77,7 @@ export function detectPdfChapters(pages: ExtractedPdfPage[]): ChapterDetectionRe
       index,
       title: candidate.title,
       startPage: candidate.startPage,
-      endPage: nextChapter ? Math.max(candidate.startPage, nextChapter.startPage - 1) : pages.length,
+      endPage: nextChapter ? Math.max(candidate.startPage, nextChapter.startPage - 1) : totalPages,
       detectionMethod: "heading_heuristic"
     };
   });

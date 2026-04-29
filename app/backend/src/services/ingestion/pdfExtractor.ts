@@ -14,6 +14,7 @@ export interface ExtractedPdfPage {
 export interface ExtractedPdfDocument {
   text: string;
   pages: ExtractedPdfPage[];
+  totalPages: number;
   warnings: string[];
 }
 
@@ -83,6 +84,7 @@ export async function extractTextFromPdfBytes(pdfBytes: Buffer): Promise<Extract
     return {
       text: documentText,
       pages,
+      totalPages: pdfDocument.numPages,
       warnings: []
     };
   } catch (error) {
@@ -90,6 +92,8 @@ export async function extractTextFromPdfBytes(pdfBytes: Buffer): Promise<Extract
       throw error;
     }
 
-    throw new Error("Unable to extract text from PDF payload");
+    throw new Error("Unable to extract text from PDF payload", {
+      cause: error
+    });
   }
 }

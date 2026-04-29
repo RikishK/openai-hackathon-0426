@@ -61,11 +61,25 @@ export const registerIngestRoutes: FastifyPluginAsync = async (app) => {
   app.post<{ Body: IngestPdfRequest; Reply: IngestResponse | { error: string; message: string } }>(
     "/api/ingest/pdf",
     async (request, reply) => {
+      if (typeof request.body.title !== "string") {
+        return reply.code(400).send({
+          error: "INVALID_PDF_TITLE",
+          message: "PDF ingestion requires title to be a string"
+        });
+      }
+
       const trimmedTitle = request.body.title.trim();
       if (trimmedTitle.length === 0) {
         return reply.code(400).send({
           error: "INVALID_PDF_TITLE",
           message: "PDF ingestion requires a non-empty title"
+        });
+      }
+
+      if (typeof request.body.pdfBase64 !== "string") {
+        return reply.code(400).send({
+          error: "INVALID_PDF_PAYLOAD",
+          message: "PDF payload must be a base64-encoded string"
         });
       }
 
@@ -97,13 +111,14 @@ export const registerIngestRoutes: FastifyPluginAsync = async (app) => {
         extractedPdf = await extractTextFromPdfBytes(pdfBytes);
       } catch (error) {
         const extractionError = error instanceof Error ? error.message : "Unable to extract text from PDF payload";
+        app.log.warn({ err: error }, "PDF extraction failed during ingest");
         return reply.code(422).send({
           error: "PDF_EXTRACTION_FAILED",
           message: extractionError
         });
       }
 
-      const chapterDetection = detectPdfChapters(extractedPdf.pages);
+      const chapterDetection = detectPdfChapters(extractedPdf.pages, extractedPdf.totalPages);
       const warnings = [...extractedPdf.warnings, ...chapterDetection.warnings];
 
       const storage = getStorageContext();

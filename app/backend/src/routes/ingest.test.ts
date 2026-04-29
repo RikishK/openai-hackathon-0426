@@ -14,6 +14,10 @@ async function createPdfBase64(pages: string[]): Promise<string> {
 
   for (const pageContent of pages) {
     const page = pdfDocument.addPage([612, 792]);
+    if (pageContent.length === 0) {
+      continue;
+    }
+
     page.drawText(pageContent, {
       x: 48,
       y: 740,
@@ -89,6 +93,61 @@ describe("ingest routes", () => {
 
     const persistedChapters = getStorageContext().repositories.chapters.listByDocumentId(body.document.id);
     expect(persistedChapters).toHaveLength(2);
+  });
+
+  it("uses actual PDF page count for the final chapter end page", async () => {
+    const pdfBase64 = await createPdfBase64(["Chapter 1 Intro\nFirst page text", "Chapter 2 Deep Dive\nSecond page text", ""]);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/ingest/pdf",
+      payload: {
+        title: "Sparse pages PDF",
+        pdfBase64
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.chapters).toHaveLength(2);
+    expect(body.chapters[1]).toMatchObject({
+      startPage: 2,
+      endPage: 3
+    });
+  });
+
+  it("returns 400 when title is not a string", async () => {
+    const pdfBase64 = await createPdfBase64(["Chapter 1 Intro\nFirst page text"]);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/ingest/pdf",
+      payload: {
+        title: 42,
+        pdfBase64
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: "INVALID_PDF_TITLE"
+    });
+  });
+
+  it("returns 400 when pdfBase64 is not a string", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/ingest/pdf",
+      payload: {
+        title: "Sample PDF",
+        pdfBase64: 12345
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: "INVALID_PDF_PAYLOAD"
+    });
   });
 
   it("returns 400 for malformed base64 payload", async () => {
