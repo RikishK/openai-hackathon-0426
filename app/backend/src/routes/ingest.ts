@@ -61,14 +61,24 @@ export const registerIngestRoutes: FastifyPluginAsync = async (app) => {
   app.post<{ Body: IngestPdfRequest; Reply: IngestResponse | { error: string; message: string } }>(
     "/api/ingest/pdf",
     async (request, reply) => {
-      if (typeof request.body.title !== "string") {
+      const payload = request.body as unknown;
+      if (typeof payload !== "object" || payload === null) {
+        return reply.code(400).send({
+          error: "INVALID_PDF_PAYLOAD",
+          message: "PDF ingestion requires a JSON object payload"
+        });
+      }
+
+      const { title, pdfBase64 } = payload as Record<string, unknown>;
+
+      if (typeof title !== "string") {
         return reply.code(400).send({
           error: "INVALID_PDF_TITLE",
           message: "PDF ingestion requires title to be a string"
         });
       }
 
-      const trimmedTitle = request.body.title.trim();
+      const trimmedTitle = title.trim();
       if (trimmedTitle.length === 0) {
         return reply.code(400).send({
           error: "INVALID_PDF_TITLE",
@@ -76,14 +86,14 @@ export const registerIngestRoutes: FastifyPluginAsync = async (app) => {
         });
       }
 
-      if (typeof request.body.pdfBase64 !== "string") {
+      if (typeof pdfBase64 !== "string") {
         return reply.code(400).send({
           error: "INVALID_PDF_PAYLOAD",
           message: "PDF payload must be a base64-encoded string"
         });
       }
 
-      const base64Content = request.body.pdfBase64.trim();
+      const base64Content = pdfBase64.trim();
       if (base64Content.length === 0) {
         return reply.code(400).send({
           error: "INVALID_PDF_PAYLOAD",

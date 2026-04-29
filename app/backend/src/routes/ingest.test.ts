@@ -150,6 +150,38 @@ describe("ingest routes", () => {
     });
   });
 
+  it("returns 400 when payload is null", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/ingest/pdf",
+      headers: {
+        "content-type": "application/json"
+      },
+      payload: "null"
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: "INVALID_PDF_PAYLOAD"
+    });
+  });
+
+  it("returns 400 when payload is not an object", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/ingest/pdf",
+      headers: {
+        "content-type": "application/json"
+      },
+      payload: "123"
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: "INVALID_PDF_PAYLOAD"
+    });
+  });
+
   it("returns 400 for malformed base64 payload", async () => {
     const response = await app.inject({
       method: "POST",
