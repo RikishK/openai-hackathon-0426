@@ -1,4 +1,16 @@
 export type SourceType = "pdf" | "text" | "url";
+export type JobState = "queued" | "processing" | "done" | "failed";
+
+export interface VoiceProfile {
+  model: string;
+  voice: string;
+  speed: number;
+}
+
+export interface ChapterScope {
+  mode: "all" | "selected";
+  chapterIds: string[];
+}
 
 export interface SourceDocument {
   id: string;
@@ -12,6 +24,32 @@ export interface DocumentChapter {
   title: string;
   startPage?: number;
   endPage?: number;
+}
+
+export interface JobStatus {
+  jobId: string;
+  state: JobState;
+  progress: number;
+}
+
+export interface AudioChunk {
+  id: string;
+  chapterId: string;
+  url: string;
+  durationMs: number;
+  cached: boolean;
+}
+
+export interface ResumePosition {
+  documentId: string;
+  positionMs: number;
+  updatedAtIso: string;
+}
+
+export interface UICue {
+  id: string;
+  kind: "info" | "warning" | "error";
+  message: string;
 }
 
 export interface IngestTextRequest {
@@ -31,15 +69,8 @@ export interface IngestResponse {
 
 export interface EstimateRequest {
   documentId: string;
-  chapterScope: {
-    mode: "all" | "selected";
-    chapterIds: string[];
-  };
-  profile: {
-    model: string;
-    voice: string;
-    speed: number;
-  };
+  chapterScope: ChapterScope;
+  profile: VoiceProfile;
 }
 
 export interface EstimateResponse {
@@ -52,5 +83,34 @@ export interface EstimateResponse {
 
 export interface GenerateResponse {
   jobId: string;
-  state: "queued" | "processing" | "done" | "failed";
+  state: JobState;
+}
+
+export interface JobsParams {
+  jobId: string;
+}
+
+export type JobsResponse = JobStatus;
+
+export interface LibraryResponse {
+  documents: SourceDocument[];
+}
+
+export interface PlayerParams {
+  documentId: string;
+}
+
+export interface PlayerResponse {
+  documentId: string;
+  audio: AudioChunk[];
+  resumePositionMs: number;
+}
+
+export interface SettingsResponse {
+  apiKeyConfigured: boolean;
+  defaultVoice: string;
+}
+
+export interface CacheClearResponse {
+  cleared: boolean;
 }
