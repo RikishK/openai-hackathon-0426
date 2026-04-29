@@ -1,4 +1,5 @@
 import cors from "@fastify/cors";
+import multipart from "@fastify/multipart";
 import Fastify from "fastify";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -51,6 +52,13 @@ await initializeStorage();
 
 await app.register(cors, {
   origin: true
+});
+
+await app.register(multipart, {
+  limits: {
+    fileSize: 40 * 1024 * 1024,
+    files: 1
+  }
 });
 
 app.get("/api/health", async () => ({ status: "ok" }));
