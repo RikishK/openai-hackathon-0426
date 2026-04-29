@@ -1,5 +1,6 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { DatabaseSync } from "node:sqlite";
+import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { createFileStore, type FileStore } from "./fileStore.js";
 import { createStorageRepositories, type StorageRepositories } from "./repositories/index.js";
@@ -24,6 +25,9 @@ export interface StorageInitOptions {
 }
 
 let storageContext: StorageContext | null = null;
+const storageDir = dirname(fileURLToPath(import.meta.url));
+const backendRoot = resolve(storageDir, "../../..");
+const repoRoot = resolve(backendRoot, "../..");
 
 async function loadMigrationFiles(migrationsDir: string): Promise<MigrationFile[]> {
   const entries = await readdir(migrationsDir, { withFileTypes: true });
@@ -108,9 +112,9 @@ export async function initializeStorage(options: StorageInitOptions = {}): Promi
     return storageContext;
   }
 
-  const dbPath = options.dbPath ?? resolve(process.cwd(), "data/app.db");
-  const migrationsDir = options.migrationsDir ?? resolve(process.cwd(), "app/backend/migrations");
-  const dataDir = options.dataDir ?? resolve(process.cwd(), "data");
+  const dbPath = options.dbPath ?? resolve(repoRoot, "data/app.db");
+  const migrationsDir = options.migrationsDir ?? resolve(backendRoot, "migrations");
+  const dataDir = options.dataDir ?? resolve(repoRoot, "data");
 
   await mkdir(dirname(dbPath), { recursive: true });
   await ensureWritableDatabaseFile(dbPath);

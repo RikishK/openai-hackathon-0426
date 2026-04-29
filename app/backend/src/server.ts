@@ -1,7 +1,8 @@
 import cors from "@fastify/cors";
 import Fastify from "fastify";
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { registerCacheRoutes } from "./routes/cache.js";
 import { registerEstimateRoutes } from "./routes/estimate.js";
 import { registerGenerateRoutes } from "./routes/generate.js";
@@ -19,8 +20,14 @@ interface LocalConfig {
   };
 }
 
+const MAX_JSON_BODY_BYTES = 30 * 1024 * 1024;
+
+const serverDir = dirname(fileURLToPath(import.meta.url));
+const backendRoot = resolve(serverDir, "..");
+const repoRoot = resolve(backendRoot, "../..");
+
 async function readLocalConfig(): Promise<LocalConfig> {
-  const configPath = resolve(process.cwd(), "config/local.json");
+  const configPath = resolve(repoRoot, "config/local.json");
   const configSource = await readFile(configPath, "utf8");
   const parsed = JSON.parse(configSource) as Partial<LocalConfig>;
 
@@ -45,7 +52,7 @@ async function readLocalConfig(): Promise<LocalConfig> {
   };
 }
 
-const app = Fastify({ logger: true });
+const app = Fastify({ logger: true, bodyLimit: MAX_JSON_BODY_BYTES });
 
 await initializeStorage();
 
