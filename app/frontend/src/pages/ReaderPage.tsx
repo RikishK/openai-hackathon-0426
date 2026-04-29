@@ -20,6 +20,14 @@ interface ReaderPageProps {
 
 const DEFAULT_PROFILE_HASH = "default";
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
+}
+
 function toChapterOptions(document: LibraryDocumentEntry | null, chapterIdsFromAudio: string[]): DocumentChapter[] {
   if (document && document.chapters.length > 0) {
     return document.chapters;
@@ -187,7 +195,11 @@ export function ReaderPage({ documents }: ReaderPageProps) {
       return;
     }
 
-    const chapterId = selectedChapterId === "all" ? activeSegment?.chapterId ?? "all" : selectedChapterId;
+    const chapterId = selectedChapterId === "all" ? activeSegment?.chapterId : selectedChapterId;
+    if (!chapterId) {
+      return;
+    }
+
     const response = await savePlayerResume(selectedDocumentId, {
       chapterId,
       profileHash: DEFAULT_PROFILE_HASH,
@@ -248,14 +260,14 @@ export function ReaderPage({ documents }: ReaderPageProps) {
       }
 
       void persistResumePosition(latestSeekMsRef.current).catch((error) => {
-        if (error instanceof Error) {
-          if (isMountedRef.current) {
-            setErrorMessage(`Unable to save resume position: ${error.message}`);
-            return;
-          }
+        const message = getErrorMessage(error);
 
-          console.error(`Unable to save resume position: ${error.message}`);
+        if (isMountedRef.current) {
+          setErrorMessage(`Unable to save resume position: ${message}`);
+          return;
         }
+
+        console.error(`Unable to save resume position: ${message}`);
       });
     }, 5000);
 
@@ -271,14 +283,14 @@ export function ReaderPage({ documents }: ReaderPageProps) {
       }
 
       void persistResumePosition(latestSeekMsRef.current).catch((error) => {
-        if (error instanceof Error) {
-          if (isMountedRef.current) {
-            setErrorMessage(`Unable to save resume position: ${error.message}`);
-            return;
-          }
+        const message = getErrorMessage(error);
 
-          console.error(`Unable to save resume position: ${error.message}`);
+        if (isMountedRef.current) {
+          setErrorMessage(`Unable to save resume position: ${message}`);
+          return;
         }
+
+        console.error(`Unable to save resume position: ${message}`);
       });
     };
   }, [selectedDocumentId]);
@@ -339,9 +351,7 @@ export function ReaderPage({ documents }: ReaderPageProps) {
     try {
       await persistResumePosition(latestSeekMsRef.current);
     } catch (error) {
-      if (error instanceof Error) {
-        setErrorMessage(`Unable to save resume position: ${error.message}`);
-      }
+      setErrorMessage(`Unable to save resume position: ${getErrorMessage(error)}`);
     }
   }
 

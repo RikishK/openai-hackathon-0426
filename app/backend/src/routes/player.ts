@@ -6,7 +6,8 @@ import type {
 } from "@tts-reader/shared";
 import type { FastifyPluginAsync } from "fastify";
 import { createReadStream } from "node:fs";
-import { access } from "node:fs/promises";
+import type { ReadStream } from "node:fs";
+import { once } from "node:events";
 import { getStorageContext } from "../services/storage/db.js";
 
 const DEFAULT_RESUME_POSITION_MS = 0;
@@ -15,15 +16,18 @@ interface PlayerChunkParams extends PlayerParams {
   chunkId: string;
 }
 
-async function validateChunkFilePath(filePath: string): Promise<"ok" | "missing"> {
-  try {
-    await access(filePath);
-    return "ok";
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return "missing";
-    }
+function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error;
+}
 
+async function createVerifiedAudioReadStream(filePath: string): Promise<ReadStream> {
+  const stream = createReadStream(filePath);
+
+  try {
+    await once(stream, "open");
+    return stream;
+  } catch (error) {
+    stream.destroy();
     throw error;
   }
 }
@@ -103,13 +107,18 @@ export const registerPlayerRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(404).send({ message: "Audio chunk not found" });
     }
 
-    const filePathStatus = await validateChunkFilePath(chunk.file_path);
-    if (filePathStatus === "missing") {
-      return reply.code(404).send({ message: "Audio chunk file is missing" });
-    }
+    try {
+      const stream = await createVerifiedAudioReadStream(chunk.file_path);
+      reply.header("accept-ranges", "bytes");
+      return reply.type("audio/mpeg").send(stream);
+    } catch (error) {
+      if (isErrnoException(error) && error.code === "ENOENT") {
+        return reply.code(404).send({ message: "Audio chunk file is missing" });
+      }
 
-    reply.header("accept-ranges", "bytes");
-    return reply.type("audio/mpeg").send(createReadStream(chunk.file_path));
+      request.log.error({ error, documentId, chunkId }, "Unable to open audio chunk stream");
+      return reply.code(500).send({ message: "Unable to open audio chunk stream" });
+    }
   });
 
   app.get<{ Params: PlayerChunkParams }>(
@@ -123,14 +132,19 @@ export const registerPlayerRoutes: FastifyPluginAsync = async (app) => {
         return reply.code(404).send({ message: "Audio chunk not found" });
       }
 
-      const filePathStatus = await validateChunkFilePath(chunk.file_path);
-      if (filePathStatus === "missing") {
-        return reply.code(404).send({ message: "Audio chunk file is missing" });
-      }
+      try {
+        const stream = await createVerifiedAudioReadStream(chunk.file_path);
+        reply.header("content-disposition", `attachment; filename="${chunk.id}.mp3"`);
+        reply.header("accept-ranges", "bytes");
+        return reply.type("audio/mpeg").send(stream);
+      } catch (error) {
+        if (isErrnoException(error) && error.code === "ENOENT") {
+          return reply.code(404).send({ message: "Audio chunk file is missing" });
+        }
 
-      reply.header("content-disposition", `attachment; filename="${chunk.id}.mp3"`);
-      reply.header("accept-ranges", "bytes");
-      return reply.type("audio/mpeg").send(createReadStream(chunk.file_path));
+        request.log.error({ error, documentId, chunkId }, "Unable to open audio chunk download stream");
+        return reply.code(500).send({ message: "Unable to open audio chunk download stream" });
+      }
     }
   );
 };
