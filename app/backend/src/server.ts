@@ -10,6 +10,7 @@ import { registerJobsRoutes } from "./routes/jobs.js";
 import { registerLibraryRoutes } from "./routes/library.js";
 import { registerPlayerRoutes } from "./routes/player.js";
 import { registerSettingsRoutes } from "./routes/settings.js";
+import { initializeStorage } from "./services/storage/db.js";
 
 interface LocalConfig {
   server: {
@@ -45,6 +46,8 @@ async function readLocalConfig(): Promise<LocalConfig> {
 }
 
 const app = Fastify({ logger: true });
+
+await initializeStorage();
 
 await app.register(cors, {
   origin: true
