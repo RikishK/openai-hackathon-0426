@@ -6,7 +6,7 @@ import type { GenerationPlan } from "./estimator.js";
 async function synthesizeAudioChunk(chunkText: string, profile: { model: string; voice: string; speed: number }): Promise<Uint8Array> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    return new TextEncoder().encode(chunkText);
+    throw new Error("OPENAI_API_KEY is not configured");
   }
 
   const response = await fetch("https://api.openai.com/v1/audio/speech", {

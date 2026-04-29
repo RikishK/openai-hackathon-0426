@@ -8,6 +8,13 @@ import { createChunkCacheKey, createProfileHash } from "./cacheKey.js";
 const TOKENS_PER_CHARACTER = 1 / 3.8;
 const ESTIMATED_USD_PER_CHARACTER = 1 / 50000;
 
+export class GenerationPlanValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GenerationPlanValidationError";
+  }
+}
+
 interface ChapterTextSlice {
   chapterId: string;
   text: string;
@@ -41,7 +48,7 @@ function selectChapterIds(chapters: DocumentChapter[], scope: ChapterScope): str
   const requested = new Set(scope.chapterIds);
   const selected = chapters.filter((chapter) => requested.has(chapter.id)).map((chapter) => chapter.id);
   if (selected.length !== requested.size) {
-    throw new Error("Some requested chapterIds do not belong to the selected document");
+    throw new GenerationPlanValidationError("Some requested chapterIds do not belong to the selected document");
   }
   return selected;
 }
@@ -79,12 +86,12 @@ export async function buildGenerationPlan(input: {
   const storage = getStorageContext();
   const document = storage.repositories.documents.getById(input.documentId);
   if (!document) {
-    throw new Error(`Document ${input.documentId} does not exist`);
+    throw new GenerationPlanValidationError(`Document ${input.documentId} does not exist`);
   }
 
   const sourceText = await loadDocumentSourceText(input.documentId);
   if (sourceText === null) {
-    throw new Error(`No source text exists for document ${input.documentId}`);
+    throw new GenerationPlanValidationError(`No source text exists for document ${input.documentId}`);
   }
 
   const normalizedText = normalizeTextForChunking(sourceText);

@@ -2,7 +2,7 @@ import type { GenerateRequest, GenerateResponse } from "@tts-reader/shared";
 import type { FastifyPluginAsync } from "fastify";
 import { randomUUID } from "node:crypto";
 import { getStorageContext } from "../services/storage/db.js";
-import { buildGenerationPlan } from "../services/tts/estimator.js";
+import { buildGenerationPlan, GenerationPlanValidationError } from "../services/tts/estimator.js";
 import { processGenerationJob } from "../services/tts/generator.js";
 
 export const registerGenerateRoutes: FastifyPluginAsync = async (app) => {
@@ -20,10 +20,17 @@ export const registerGenerateRoutes: FastifyPluginAsync = async (app) => {
       try {
         plan = await buildGenerationPlan(request.body);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to create generation plan";
-        return reply.code(400).send({
+        if (error instanceof GenerationPlanValidationError) {
+          return reply.code(400).send({
+            error: "GENERATE_INVALID_REQUEST",
+            message: error.message
+          });
+        }
+
+        request.log.error({ error }, "Failed to create generation plan");
+        return reply.code(500).send({
           error: "GENERATE_PLAN_FAILED",
-          message
+          message: "Failed to create generation plan"
         });
       }
 
@@ -50,10 +57,12 @@ export const registerGenerateRoutes: FastifyPluginAsync = async (app) => {
         state: "queued"
       });
 
-      void processGenerationJob({
+      processGenerationJob({
         jobId,
         plan,
         profile: request.body.profile
+      }).catch((error) => {
+        request.log.error({ error, jobId }, "Generation job failed in background worker");
       });
 
       return {

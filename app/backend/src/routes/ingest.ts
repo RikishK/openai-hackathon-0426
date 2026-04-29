@@ -44,74 +44,20 @@ export const registerIngestRoutes: FastifyPluginAsync = async (app) => {
     }
   );
 
-  app.post<{ Body: IngestUrlRequest; Reply: IngestResponse }>(
+  app.post<{ Body: IngestUrlRequest; Reply: IngestResponse | { error: string; message: string } }>(
     "/api/ingest/url",
-    async (request) => {
-      const storage = getStorageContext();
-      const documentId = `doc_${randomUUID()}`;
-      const chapterId = `ch_${randomUUID()}`;
-
-      const document = storage.repositories.documents.create({
-        id: documentId,
-        title: request.body.url,
-        type: "url"
+    async (_, reply) => {
+      return reply.code(501).send({
+        error: "READABILITY_EXTRACTION_UNAVAILABLE",
+        message: "URL ingestion requires Readability extraction and is not yet implemented"
       });
-
-      const chapters = [
-        {
-          id: chapterId,
-          index: 0,
-          title: "Full document"
-        }
-      ];
-
-      storage.repositories.chapters.createMany(
-        chapters.map((chapter) => ({
-          ...chapter,
-          documentId,
-          detectionMethod: "readability"
-        }))
-      );
-
-      await persistDocumentSourceText(documentId, request.body.url);
-
-      return {
-        document,
-        chapters,
-        warnings: []
-      };
     }
   );
 
-  app.post<{ Reply: IngestResponse }>("/api/ingest/pdf", async () => {
-    const storage = getStorageContext();
-    const documentId = `doc_${randomUUID()}`;
-
-    const document = storage.repositories.documents.create({
-      id: documentId,
-      title: "Uploaded PDF",
-      type: "pdf"
+  app.post<{ Reply: IngestResponse | { error: string; message: string } }>("/api/ingest/pdf", async (_, reply) => {
+    return reply.code(501).send({
+      error: "PDF_EXTRACTION_UNAVAILABLE",
+      message: "PDF ingestion is not yet implemented"
     });
-
-    const chapters = [
-      { id: `ch_${randomUUID()}`, index: 0, title: "Full document" },
-      { id: `ch_${randomUUID()}`, index: 1, title: "Chapter 1", startPage: 1, endPage: 16 }
-    ];
-
-    storage.repositories.chapters.createMany(
-      chapters.map((chapter) => ({
-        ...chapter,
-        documentId,
-        detectionMethod: "placeholder"
-      }))
-    );
-
-    await persistDocumentSourceText(documentId, "Uploaded PDF");
-
-    return {
-      document,
-      chapters,
-      warnings: []
-    };
   });
 };

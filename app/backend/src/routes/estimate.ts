@@ -1,6 +1,6 @@
 import type { EstimateRequest, EstimateResponse } from "@tts-reader/shared";
 import type { FastifyPluginAsync } from "fastify";
-import { buildGenerationPlan, toEstimateResponse } from "../services/tts/estimator.js";
+import { buildGenerationPlan, GenerationPlanValidationError, toEstimateResponse } from "../services/tts/estimator.js";
 
 export const registerEstimateRoutes: FastifyPluginAsync = async (app) => {
   app.post<{ Body: EstimateRequest; Reply: EstimateResponse | { error: string; message: string } }>(
@@ -10,10 +10,17 @@ export const registerEstimateRoutes: FastifyPluginAsync = async (app) => {
         const plan = await buildGenerationPlan(request.body);
         return toEstimateResponse(plan);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to estimate generation";
-        return reply.code(400).send({
+        if (error instanceof GenerationPlanValidationError) {
+          return reply.code(400).send({
+            error: "ESTIMATE_INVALID_REQUEST",
+            message: error.message
+          });
+        }
+
+        request.log.error({ error }, "Estimate request failed");
+        return reply.code(500).send({
           error: "ESTIMATE_FAILED",
-          message
+          message: "Failed to estimate generation"
         });
       }
     }
