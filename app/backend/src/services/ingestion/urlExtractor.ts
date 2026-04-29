@@ -2,6 +2,7 @@ import { Readability } from "@mozilla/readability";
 import { JSDOM } from "jsdom";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
+import { Agent, fetch as undiciFetch } from "undici";
 
 const URL_FETCH_TIMEOUT_MS = 12000;
 const MAX_REDIRECTS = 5;
@@ -85,7 +86,12 @@ function isBlockedAddress(address: string): boolean {
   return true;
 }
 
-async function assertSafeUrlTarget(url: URL): Promise<void> {
+interface PinnedTarget {
+  address: string;
+  family: 4 | 6;
+}
+
+async function resolveSafeUrlTarget(url: URL): Promise<PinnedTarget> {
   const hostname = url.hostname.toLowerCase();
   if (hostname === "localhost" || hostname.endsWith(".localhost")) {
     throw new UrlExtractionError(
@@ -94,11 +100,26 @@ async function assertSafeUrlTarget(url: URL): Promise<void> {
     );
   }
 
-  if (isIP(hostname) !== 0 && isBlockedAddress(hostname)) {
-    throw new UrlExtractionError(
-      "URL_FETCH_FAILED",
-      "This URL target is not allowed for security reasons. Please copy and paste the article text manually."
-    );
+  const literalVersion = isIP(hostname);
+  if (literalVersion !== 0) {
+    if (isBlockedAddress(hostname)) {
+      throw new UrlExtractionError(
+        "URL_FETCH_FAILED",
+        "This URL target is not allowed for security reasons. Please copy and paste the article text manually."
+      );
+    }
+
+    if (literalVersion !== 4 && literalVersion !== 6) {
+      throw new UrlExtractionError(
+        "URL_FETCH_FAILED",
+        "Could not resolve this URL host. Please copy and paste the article text manually."
+      );
+    }
+
+    return {
+      address: hostname,
+      family: literalVersion
+    };
   }
 
   let resolved;
@@ -118,6 +139,19 @@ async function assertSafeUrlTarget(url: URL): Promise<void> {
       "This URL target is not allowed for security reasons. Please copy and paste the article text manually."
     );
   }
+
+  const selected = resolved[0];
+  if (!selected || (selected.family !== 4 && selected.family !== 6)) {
+    throw new UrlExtractionError(
+      "URL_FETCH_FAILED",
+      "Could not resolve this URL host. Please copy and paste the article text manually."
+    );
+  }
+
+  return {
+    address: selected.address,
+    family: selected.family
+  };
 }
 
 async function validateInputUrl(rawUrl: string): Promise<string> {
@@ -132,8 +166,6 @@ async function validateInputUrl(rawUrl: string): Promise<string> {
     throw new UrlExtractionError("URL_FETCH_FAILED", "Only http(s) URLs are supported.");
   }
 
-  await assertSafeUrlTarget(parsed);
-
   return parsed.toString();
 }
 
@@ -141,7 +173,12 @@ function isRedirectStatus(status: number): boolean {
   return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
 }
 
-async function fetchWithValidatedRedirects(initialUrl: string, signal: AbortSignal): Promise<Response> {
+interface FetchHtmlResult {
+  canonicalUrl: string;
+  sourceHtml: string;
+}
+
+async function fetchWithValidatedRedirects(initialUrl: string, signal: AbortSignal): Promise<FetchHtmlResult> {
   const visited = new Set<string>();
   let currentUrl = initialUrl;
 
@@ -155,16 +192,27 @@ async function fetchWithValidatedRedirects(initialUrl: string, signal: AbortSign
 
     visited.add(currentUrl);
 
-    let response: Response;
+    const pinnedTarget = await resolveSafeUrlTarget(new URL(currentUrl));
+    const agent = new Agent({
+      connect: {
+        lookup: (_hostname, _options, callback) => {
+          callback(null, pinnedTarget.address, pinnedTarget.family);
+        }
+      }
+    });
+
+    let response;
     try {
-      response = await fetch(currentUrl, {
+      response = await undiciFetch(currentUrl, {
         signal,
         redirect: "manual",
+        dispatcher: agent,
         headers: {
           "user-agent": "tts-reader/0.1"
         }
       });
     } catch (error) {
+      await agent.close();
       throw new UrlExtractionError(
         "URL_FETCH_FAILED",
         "Could not fetch this URL. Please copy and paste the article text manually.",
@@ -172,45 +220,80 @@ async function fetchWithValidatedRedirects(initialUrl: string, signal: AbortSign
       );
     }
 
-    if (!isRedirectStatus(response.status)) {
-      return response;
+    if (isRedirectStatus(response.status)) {
+      if (redirectCount >= MAX_REDIRECTS) {
+        await response.body?.cancel();
+        await agent.close();
+        throw new UrlExtractionError(
+          "URL_FETCH_FAILED",
+          "Could not fetch this URL due to too many redirects. Please copy and paste the article text manually."
+        );
+      }
+
+      const location = response.headers.get("location");
+      if (!location) {
+        await response.body?.cancel();
+        await agent.close();
+        throw new UrlExtractionError(
+          "URL_FETCH_FAILED",
+          "Could not fetch this URL because a redirect target is missing. Please copy and paste the article text manually."
+        );
+      }
+
+      let nextUrl: URL;
+      try {
+        nextUrl = new URL(location, currentUrl);
+      } catch (error) {
+        await response.body?.cancel();
+        await agent.close();
+        throw new UrlExtractionError(
+          "URL_FETCH_FAILED",
+          "Could not fetch this URL because a redirect target is invalid. Please copy and paste the article text manually.",
+          error
+        );
+      }
+
+      if (nextUrl.protocol !== "http:" && nextUrl.protocol !== "https:") {
+        await response.body?.cancel();
+        await agent.close();
+        throw new UrlExtractionError(
+          "URL_FETCH_FAILED",
+          "Could not fetch this URL because a redirect target is not http(s). Please copy and paste the article text manually."
+        );
+      }
+
+      await response.body?.cancel();
+      await agent.close();
+      currentUrl = nextUrl.toString();
+      continue;
     }
 
-    if (redirectCount >= MAX_REDIRECTS) {
+    if (!response.ok) {
+      await response.body?.cancel();
+      await agent.close();
       throw new UrlExtractionError(
         "URL_FETCH_FAILED",
-        "Could not fetch this URL due to too many redirects. Please copy and paste the article text manually."
+        "Could not fetch this URL. Please copy and paste the article text manually."
       );
     }
 
-    const location = response.headers.get("location");
-    if (!location) {
-      throw new UrlExtractionError(
-        "URL_FETCH_FAILED",
-        "Could not fetch this URL because a redirect target is missing. Please copy and paste the article text manually."
-      );
-    }
-
-    let nextUrl: URL;
+    let sourceHtml: string;
     try {
-      nextUrl = new URL(location, currentUrl);
+      sourceHtml = await response.text();
     } catch (error) {
+      await agent.close();
       throw new UrlExtractionError(
-        "URL_FETCH_FAILED",
-        "Could not fetch this URL because a redirect target is invalid. Please copy and paste the article text manually.",
+        "READABILITY_EXTRACTION_FAILED",
+        "Could not extract readable text. Please copy and paste the article text manually.",
         error
       );
     }
 
-    if (nextUrl.protocol !== "http:" && nextUrl.protocol !== "https:") {
-      throw new UrlExtractionError(
-        "URL_FETCH_FAILED",
-        "Could not fetch this URL because a redirect target is not http(s). Please copy and paste the article text manually."
-      );
-    }
-
-    await assertSafeUrlTarget(nextUrl);
-    currentUrl = nextUrl.toString();
+    await agent.close();
+    return {
+      canonicalUrl: response.url || currentUrl,
+      sourceHtml
+    };
   }
 
   throw new UrlExtractionError(
@@ -225,27 +308,7 @@ export async function extractReadableUrl(rawUrl: string): Promise<UrlExtractionR
   const timeoutHandle = setTimeout(() => controller.abort(), URL_FETCH_TIMEOUT_MS);
 
   try {
-    const response = await fetchWithValidatedRedirects(initialUrl, controller.signal);
-
-    if (!response.ok) {
-      throw new UrlExtractionError(
-        "URL_FETCH_FAILED",
-        "Could not fetch this URL. Please copy and paste the article text manually."
-      );
-    }
-
-    const canonicalUrl = response.url || initialUrl;
-
-    let sourceHtml: string;
-    try {
-      sourceHtml = await response.text();
-    } catch (error) {
-      throw new UrlExtractionError(
-        "READABILITY_EXTRACTION_FAILED",
-        "Could not extract readable text. Please copy and paste the article text manually.",
-        error
-      );
-    }
+    const { canonicalUrl, sourceHtml } = await fetchWithValidatedRedirects(initialUrl, controller.signal);
 
     let article: ReturnType<Readability["parse"]>;
     try {
