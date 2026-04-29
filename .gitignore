@@ -3,8 +3,11 @@ node_modules/
 dist/
 .DS_Store
 data/app.db
+data/app.db-shm
+data/app.db-wal
 data/audio/
 data/cues/
 data/documents/
 data/temp/
+app/backend/data/
 *.tsbuildinfo
