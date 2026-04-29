@@ -23,26 +23,26 @@ function normalizeTitle(value: string): string {
 }
 
 function fromOutlines(outlineTitles: string[], pageCount: number): DetectedChapter[] {
-  const chapters = outlineTitles.map((title, index) => {
+  const normalizedTitles = outlineTitles.map((title) => normalizeTitle(title)).filter((title) => title.length > 0);
+
+  return normalizedTitles.map((title, index) => {
     const chapter: DetectedChapter = {
       index,
-      title: normalizeTitle(title)
+      title
     };
 
     if (pageCount > 0) {
-      const approxStart = Math.floor((index * pageCount) / outlineTitles.length) + 1;
+      const approxStart = Math.floor((index * pageCount) / normalizedTitles.length) + 1;
       const approxEnd =
-        index === outlineTitles.length - 1
+        index === normalizedTitles.length - 1
           ? pageCount
-          : Math.floor(((index + 1) * pageCount) / outlineTitles.length);
+          : Math.floor(((index + 1) * pageCount) / normalizedTitles.length);
       chapter.startPage = approxStart;
       chapter.endPage = Math.max(approxStart, approxEnd);
     }
 
     return chapter;
   });
-
-  return chapters.filter((chapter) => chapter.title.length > 0);
 }
 
 function fromHeadings(text: string): DetectedChapter[] {
