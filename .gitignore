@@ -1,1 +1,10 @@
 .opencode/
+node_modules/
+dist/
+.DS_Store
+data/app.db
+data/audio/
+data/cues/
+data/documents/
+data/temp/
+*.tsbuildinfo

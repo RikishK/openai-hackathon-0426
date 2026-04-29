@@ -1,0 +1,30 @@
+{
+  "name": "tts-reader",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "app/frontend",
+    "app/backend",
+    "app/shared"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev:frontend": "npm run dev --workspace @tts-reader/frontend",
+    "dev:backend": "npm run dev --workspace @tts-reader/backend",
+    "lint": "npm run lint --workspaces --if-present",
+    "format": "prettier --check .",
+    "format:fix": "prettier --write .",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.2",
+    "@eslint/js": "^9.26.0",
+    "eslint": "^9.26.0",
+    "globals": "^16.0.0",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.31.1",
+    "vitest": "^3.1.2"
+  }
+}

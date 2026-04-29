@@ -1,3 +1,22 @@
 {
-  "_comment": "Backend package manifest placeholder for local API server and worker."
+  "name": "@tts-reader/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/server.js",
+    "lint": "eslint src --ext .ts",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.1.0",
+    "@tts-reader/shared": "file:../shared",
+    "fastify": "^5.2.2"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.3"
+  }
 }

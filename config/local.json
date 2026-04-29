@@ -1,3 +1,11 @@
 {
-  "_comment": "Local app configuration placeholder, including OpenAI API key settings."
+  "openai": {
+    "apiKey": "",
+    "model": "gpt-4o-mini-tts",
+    "voice": "alloy"
+  },
+  "server": {
+    "host": "127.0.0.1",
+    "port": 4310
+  }
 }
