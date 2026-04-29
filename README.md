@@ -1,32 +1,44 @@
 # TTS Reader
 
-Local-first text-to-speech reader for users who need audio access to text content.
+TTS Reader for visually impaired or blind users who need audio access to PDFs and text that do not yet have audiobook or braille offerings.
 
-## Bootstrap Foundation
+## What It Does
 
-This branch provides PR-01 scaffolding:
+- Local-first web app + local backend (no cloud app server)
+- Upload PDF, detect chapters, estimate cost, and generate speech audio
+- Read generated audio in-app with resume support and downloads
 
-- npm workspace with frontend, backend, and shared contracts packages
-- TypeScript baseline configuration across packages
-- Local API server shell with core route placeholders
-- React + Vite frontend shell with ingest, library, reader, and settings pages
-- Lint, format, test, and typecheck scripts for each package
+## Prerequisites
+
+- Node.js + npm
+- OpenAI API key with access to audio generation
 
 ## Quick Start
 
 ```bash
 npm install
-npm run dev:backend
+export OPENAI_API_KEY="sk-..."
 ```
 
-In another terminal:
+Start backend:
 
 ```bash
-npm run dev:frontend
+./scripts/start-backend.sh
 ```
 
-- Frontend runs on `http://localhost:5173`
+Start frontend in another terminal:
+
+```bash
+./scripts/start-frontend.sh
+```
+
+- Frontend runs on `http://127.0.0.1:5173`
 - Backend runs on `http://127.0.0.1:4310`
+
+## Run Scripts
+
+- `./scripts/start-backend.sh` - runs backend dev server
+- `./scripts/start-frontend.sh` - runs frontend dev server
 
 ## Workspace Scripts
 
