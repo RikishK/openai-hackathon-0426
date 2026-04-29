@@ -8,6 +8,8 @@ interface IngestPageProps {
   onViewLibrary: () => void;
 }
 
+const MAX_PDF_BYTES = 20 * 1024 * 1024;
+
 const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -84,6 +86,11 @@ export function IngestPage({ onIngested, onViewLibrary }: IngestPageProps) {
       return;
     }
 
+    if (pdfFile.size > MAX_PDF_BYTES) {
+      setStatus("Selected PDF exceeds the 20 MB upload limit.");
+      return;
+    }
+
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {
       setStatus("Enter a title before submitting.");
@@ -135,13 +142,23 @@ export function IngestPage({ onIngested, onViewLibrary }: IngestPageProps) {
             accept="application/pdf,.pdf"
             onChange={(event) => {
               const selected = event.target.files?.[0] ?? null;
+              if (selected && selected.size > MAX_PDF_BYTES) {
+                setPdfFile(null);
+                setStatus("Selected PDF exceeds the 20 MB upload limit.");
+                return;
+              }
+
               setPdfFile(selected);
+              if (selected) {
+                setStatus("Ready to upload PDF.");
+              }
             }}
             type="file"
             disabled={isSubmitting}
             required
           />
         </label>
+        <p>PDF size limit: 20 MB.</p>
         <button type="submit" disabled={isSubmitting}>
           {isSubmitting ? "Submitting..." : "Submit PDF"}
         </button>
