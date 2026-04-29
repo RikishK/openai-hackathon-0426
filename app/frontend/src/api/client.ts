@@ -11,18 +11,19 @@ interface ApiErrorPayload {
   message?: string;
 }
 
-async function parseResponseOrThrow<T>(response: Response, fallbackMessage: string): Promise<T> {
+async function parseResponseOrThrow<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    let message = fallbackMessage;
-    try {
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
       const payload = (await response.json()) as ApiErrorPayload;
-      if (typeof payload.message === "string" && payload.message.length > 0) {
-        message = payload.message;
+      if (typeof payload.message !== "string" || payload.message.trim().length === 0) {
+        throw new Error(`Request failed with status ${response.status} and an invalid JSON error payload`);
       }
-    } catch {
-      message = fallbackMessage;
+
+      throw new Error(payload.message);
     }
-    throw new Error(message);
+
+    throw new Error(`Request failed with status ${response.status} ${response.statusText}`.trim());
   }
 
   return (await response.json()) as T;
@@ -37,7 +38,7 @@ export async function ingestText(payload: IngestTextRequest): Promise<IngestResp
     body: JSON.stringify(payload)
   });
 
-  return parseResponseOrThrow<IngestResponse>(response, "Failed to ingest text payload");
+  return parseResponseOrThrow<IngestResponse>(response);
 }
 
 export async function ingestPdf(payload: IngestPdfRequest): Promise<IngestResponse> {
@@ -49,10 +50,10 @@ export async function ingestPdf(payload: IngestPdfRequest): Promise<IngestRespon
     body: JSON.stringify(payload)
   });
 
-  return parseResponseOrThrow<IngestResponse>(response, "Failed to ingest PDF payload");
+  return parseResponseOrThrow<IngestResponse>(response);
 }
 
 export async function getLibrary(): Promise<LibraryResponse> {
   const response = await fetch(`${API_BASE_URL}/library`);
-  return parseResponseOrThrow<LibraryResponse>(response, "Failed to load library");
+  return parseResponseOrThrow<LibraryResponse>(response);
 }

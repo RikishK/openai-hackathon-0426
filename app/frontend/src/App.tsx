@@ -43,8 +43,11 @@ export function App() {
           return;
         }
 
-        const message = error instanceof Error ? error.message : "Unknown library error";
-        setLibraryErrorMessage(`Unable to load library: ${message}`);
+        if (!(error instanceof Error)) {
+          throw error;
+        }
+
+        setLibraryErrorMessage(`Unable to load library: ${error.message}`);
       } finally {
         if (isMounted) {
           setIsLibraryLoading(false);

@@ -8,13 +8,35 @@ interface IngestPageProps {
   onViewLibrary: () => void;
 }
 
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        reject(new Error("FileReader did not return a data URL string"));
+        return;
+      }
+
+      resolve(reader.result);
+    };
+
+    reader.onerror = () => {
+      reject(reader.error ?? new Error("Unable to read file"));
+    };
+
+    reader.readAsDataURL(file);
+  });
+}
+
 async function toBase64(file: File): Promise<string> {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  let binary = "";
-  for (const value of bytes) {
-    binary += String.fromCharCode(value);
+  const dataUrl = await readFileAsDataUrl(file);
+  const markerIndex = dataUrl.indexOf(",");
+  if (markerIndex === -1) {
+    throw new Error("Selected file could not be converted to base64");
   }
-  return btoa(binary);
+
+  return dataUrl.slice(markerIndex + 1);
 }
 
 export function IngestPage({ onIngested, onViewLibrary }: IngestPageProps) {
@@ -23,7 +45,6 @@ export function IngestPage({ onIngested, onViewLibrary }: IngestPageProps) {
   const [status, setStatus] = useState("Select a PDF file to begin.");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [detectedChapters, setDetectedChapters] = useState<DocumentChapter[]>([]);
-  const [selectedChapterIds, setSelectedChapterIds] = useState<string[]>([]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -46,35 +67,20 @@ export function IngestPage({ onIngested, onViewLibrary }: IngestPageProps) {
       const pdfBase64 = await toBase64(pdfFile);
       const response = await ingestPdf({ title: trimmedTitle, pdfBase64 });
       setDetectedChapters(response.chapters);
-      setSelectedChapterIds(response.chapters.map((chapter) => chapter.id));
       onIngested(response.document, response.chapters);
       setStatus(
         `Saved ${response.document.title} with ${response.chapters.length} detected chapter${response.chapters.length === 1 ? "" : "s"}.`
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown ingest error";
+      if (!(error instanceof Error)) {
+        throw error;
+      }
+
       console.error("Ingest request failed", error);
-      setStatus(`Failed to submit ingest request: ${message}`);
+      setStatus(`Failed to submit ingest request: ${error.message}`);
     } finally {
       setIsSubmitting(false);
     }
-  }
-
-  function toggleChapterSelection(chapterId: string) {
-    setSelectedChapterIds((current) => {
-      if (current.includes(chapterId)) {
-        return current.filter((id) => id !== chapterId);
-      }
-      return [...current, chapterId];
-    });
-  }
-
-  function selectAllChapters() {
-    setSelectedChapterIds(detectedChapters.map((chapter) => chapter.id));
-  }
-
-  function clearChapterSelection() {
-    setSelectedChapterIds([]);
   }
 
   const canViewLibrary = detectedChapters.length > 0;
@@ -114,14 +120,13 @@ export function IngestPage({ onIngested, onViewLibrary }: IngestPageProps) {
         <section className="stack" aria-labelledby="detected-chapters-title">
           <h3 id="detected-chapters-title">Detected chapters</h3>
           <p>
-            {selectedChapterIds.length} of {detectedChapters.length} chapter
-            {detectedChapters.length === 1 ? "" : "s"} selected.
+            Chapter selection is read-only in this scope and will become actionable in the generation flow.
           </p>
           <div className="row">
-            <button type="button" onClick={selectAllChapters}>
+            <button type="button" disabled>
               Select all
             </button>
-            <button type="button" onClick={clearChapterSelection}>
+            <button type="button" disabled>
               Clear
             </button>
           </div>
@@ -129,11 +134,7 @@ export function IngestPage({ onIngested, onViewLibrary }: IngestPageProps) {
             {detectedChapters.map((chapter) => (
               <li key={chapter.id}>
                 <label className="chapter-option">
-                  <input
-                    type="checkbox"
-                    checked={selectedChapterIds.includes(chapter.id)}
-                    onChange={() => toggleChapterSelection(chapter.id)}
-                  />
+                  <input type="checkbox" defaultChecked disabled />
                   <span>
                     {chapter.index + 1}. {chapter.title}
                     {chapter.startPage !== undefined && chapter.endPage !== undefined
