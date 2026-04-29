@@ -75,7 +75,7 @@ export function createAudioChunksRepository(db: DatabaseSync): AudioChunksReposi
   const listForDocumentStatement = db.prepare(
     `SELECT id, chapter_id, file_path, duration_ms, status
      FROM audio_chunks
-     WHERE doc_id = ?
+     WHERE doc_id = ? AND status = 'ready'
      ORDER BY chapter_id ASC, chunk_index ASC`
   );
   const getByIdStatement = db.prepare(

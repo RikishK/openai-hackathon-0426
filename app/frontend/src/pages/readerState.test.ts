@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AudioChunk } from "@tts-reader/shared";
+import type { PlayableAudioChunk } from "./readerState";
 import {
   buildPlaybackSegments,
   getNextSegmentStart,
@@ -7,11 +7,12 @@ import {
   resolvePlaybackCursor
 } from "./readerState";
 
-const chunks: AudioChunk[] = [
+const chunks: PlayableAudioChunk[] = [
   {
     id: "chunk-1",
     chapterId: "ch-1",
     url: "/audio/chunk-1.mp3",
+    downloadUrl: "/audio/chunk-1.mp3?download=1",
     durationMs: 1000,
     cached: true
   },
@@ -19,6 +20,7 @@ const chunks: AudioChunk[] = [
     id: "chunk-2",
     chapterId: "ch-1",
     url: "/audio/chunk-2.mp3",
+    downloadUrl: "/audio/chunk-2.mp3?download=1",
     durationMs: 2500,
     cached: true
   },
@@ -26,6 +28,7 @@ const chunks: AudioChunk[] = [
     id: "chunk-3",
     chapterId: "ch-2",
     url: "/audio/chunk-3.mp3",
+    downloadUrl: "/audio/chunk-3.mp3?download=1",
     durationMs: 500,
     cached: false
   }

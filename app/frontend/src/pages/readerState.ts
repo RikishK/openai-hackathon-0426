@@ -1,10 +1,14 @@
 import type { AudioChunk } from "@tts-reader/shared";
 
+export interface PlayableAudioChunk extends AudioChunk {
+  downloadUrl: string;
+}
+
 export interface PlaybackSegment {
   chunkId: string;
   chapterId: string;
   url: string;
-  downloadUrl?: string;
+  downloadUrl: string;
   durationMs: number;
   startMs: number;
   endMs: number;
@@ -16,7 +20,7 @@ export interface PlaybackCursor {
   positionMs: number;
 }
 
-export function buildPlaybackSegments(chunks: AudioChunk[], chapterId: string): PlaybackSegment[] {
+export function buildPlaybackSegments(chunks: PlayableAudioChunk[], chapterId: string): PlaybackSegment[] {
   const filteredChunks =
     chapterId === "all" ? chunks : chunks.filter((chunk) => chunk.chapterId === chapterId);
 
@@ -31,10 +35,10 @@ export function buildPlaybackSegments(chunks: AudioChunk[], chapterId: string): 
       chunkId: chunk.id,
       chapterId: chunk.chapterId,
       url: chunk.url,
+      downloadUrl: chunk.downloadUrl,
       durationMs: sanitizedDurationMs,
       startMs,
-      endMs,
-      ...(chunk.downloadUrl ? { downloadUrl: chunk.downloadUrl } : {})
+      endMs
     };
   });
 }

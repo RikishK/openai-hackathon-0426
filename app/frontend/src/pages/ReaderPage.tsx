@@ -10,6 +10,7 @@ import {
   buildPlaybackSegments,
   getNextSegmentStart,
   getTotalDurationMs,
+  type PlayableAudioChunk,
   resolvePlaybackCursor
 } from "./readerState";
 
@@ -31,10 +32,25 @@ function toChapterOptions(document: LibraryDocumentEntry | null, chapterIdsFromA
   }));
 }
 
+function toPlayableAudioChunks(
+  chunks: Awaited<ReturnType<typeof getPlayer>>["audio"]
+): PlayableAudioChunk[] {
+  return chunks.map((chunk) => {
+    if (typeof chunk.downloadUrl !== "string" || chunk.downloadUrl.trim().length === 0) {
+      throw new Error(`Player response is missing downloadUrl for chunk ${chunk.id}`);
+    }
+
+    return {
+      ...chunk,
+      downloadUrl: chunk.downloadUrl
+    };
+  });
+}
+
 export function ReaderPage({ documents }: ReaderPageProps) {
   const [selectedDocumentId, setSelectedDocumentId] = useState<string>(documents[0]?.document.id ?? "");
   const [selectedChapterId, setSelectedChapterId] = useState<string>("all");
-  const [audioChunks, setAudioChunks] = useState<Awaited<ReturnType<typeof getPlayer>>["audio"]>([]);
+  const [audioChunks, setAudioChunks] = useState<PlayableAudioChunk[]>([]);
   const [resumePositionMs, setResumePositionMs] = useState(0);
   const [seekMs, setSeekMs] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
@@ -44,6 +60,15 @@ export function ReaderPage({ documents }: ReaderPageProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const latestSeekMsRef = useRef(0);
   const lastSavedResumeMsRef = useRef<number | null>(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (documents.length === 0) {
@@ -82,7 +107,7 @@ export function ReaderPage({ documents }: ReaderPageProps) {
           return;
         }
 
-        setAudioChunks(player.audio);
+        setAudioChunks(toPlayableAudioChunks(player.audio));
         setResumePositionMs(player.resumePositionMs);
         setSeekMs(player.resumePositionMs);
         lastSavedResumeMsRef.current = player.resumePositionMs;
@@ -224,7 +249,12 @@ export function ReaderPage({ documents }: ReaderPageProps) {
 
       void persistResumePosition(latestSeekMsRef.current).catch((error) => {
         if (error instanceof Error) {
-          setErrorMessage(`Unable to save resume position: ${error.message}`);
+          if (isMountedRef.current) {
+            setErrorMessage(`Unable to save resume position: ${error.message}`);
+            return;
+          }
+
+          console.error(`Unable to save resume position: ${error.message}`);
         }
       });
     }, 5000);
@@ -240,7 +270,16 @@ export function ReaderPage({ documents }: ReaderPageProps) {
         return;
       }
 
-      void persistResumePosition(latestSeekMsRef.current);
+      void persistResumePosition(latestSeekMsRef.current).catch((error) => {
+        if (error instanceof Error) {
+          if (isMountedRef.current) {
+            setErrorMessage(`Unable to save resume position: ${error.message}`);
+            return;
+          }
+
+          console.error(`Unable to save resume position: ${error.message}`);
+        }
+      });
     };
   }, [selectedDocumentId]);
 
@@ -364,7 +403,7 @@ export function ReaderPage({ documents }: ReaderPageProps) {
           <ul className="chapter-list">
             {playbackSegments.map((segment) => (
               <li key={segment.chunkId}>
-                <a href={segment.downloadUrl ?? segment.url} download>
+                <a href={segment.downloadUrl} download>
                   Download {segment.chunkId}
                 </a>
               </li>

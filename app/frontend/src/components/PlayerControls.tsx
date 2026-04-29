@@ -1,3 +1,5 @@
+import type { KeyboardEvent } from "react";
+
 interface PlayerControlsProps {
   isPlaying: boolean;
   disabled: boolean;
@@ -106,4 +108,3 @@ export function PlayerControls({
     </div>
   );
 }
-import type { KeyboardEvent } from "react";

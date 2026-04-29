@@ -15,6 +15,19 @@ interface PlayerChunkParams extends PlayerParams {
   chunkId: string;
 }
 
+async function validateChunkFilePath(filePath: string): Promise<"ok" | "missing"> {
+  try {
+    await access(filePath);
+    return "ok";
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return "missing";
+    }
+
+    throw error;
+  }
+}
+
 export const registerPlayerRoutes: FastifyPluginAsync = async (app) => {
   app.get<{ Params: PlayerParams; Reply: PlayerResponse }>(
     "/api/player/:documentId",
@@ -90,9 +103,8 @@ export const registerPlayerRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(404).send({ message: "Audio chunk not found" });
     }
 
-    try {
-      await access(chunk.file_path);
-    } catch {
+    const filePathStatus = await validateChunkFilePath(chunk.file_path);
+    if (filePathStatus === "missing") {
       return reply.code(404).send({ message: "Audio chunk file is missing" });
     }
 
@@ -111,9 +123,8 @@ export const registerPlayerRoutes: FastifyPluginAsync = async (app) => {
         return reply.code(404).send({ message: "Audio chunk not found" });
       }
 
-      try {
-        await access(chunk.file_path);
-      } catch {
+      const filePathStatus = await validateChunkFilePath(chunk.file_path);
+      if (filePathStatus === "missing") {
         return reply.code(404).send({ message: "Audio chunk file is missing" });
       }
 
