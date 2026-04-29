@@ -4,6 +4,7 @@ import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 
 const URL_FETCH_TIMEOUT_MS = 12000;
+const MAX_REDIRECTS = 5;
 
 export interface UrlExtractionResult {
   canonicalUrl: string;
@@ -136,80 +137,152 @@ async function validateInputUrl(rawUrl: string): Promise<string> {
   return parsed.toString();
 }
 
+function isRedirectStatus(status: number): boolean {
+  return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
+}
+
+async function fetchWithValidatedRedirects(initialUrl: string, signal: AbortSignal): Promise<Response> {
+  const visited = new Set<string>();
+  let currentUrl = initialUrl;
+
+  for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount += 1) {
+    if (visited.has(currentUrl)) {
+      throw new UrlExtractionError(
+        "URL_FETCH_FAILED",
+        "Could not fetch this URL due to a redirect loop. Please copy and paste the article text manually."
+      );
+    }
+
+    visited.add(currentUrl);
+
+    let response: Response;
+    try {
+      response = await fetch(currentUrl, {
+        signal,
+        redirect: "manual",
+        headers: {
+          "user-agent": "tts-reader/0.1"
+        }
+      });
+    } catch (error) {
+      throw new UrlExtractionError(
+        "URL_FETCH_FAILED",
+        "Could not fetch this URL. Please copy and paste the article text manually.",
+        error
+      );
+    }
+
+    if (!isRedirectStatus(response.status)) {
+      return response;
+    }
+
+    if (redirectCount >= MAX_REDIRECTS) {
+      throw new UrlExtractionError(
+        "URL_FETCH_FAILED",
+        "Could not fetch this URL due to too many redirects. Please copy and paste the article text manually."
+      );
+    }
+
+    const location = response.headers.get("location");
+    if (!location) {
+      throw new UrlExtractionError(
+        "URL_FETCH_FAILED",
+        "Could not fetch this URL because a redirect target is missing. Please copy and paste the article text manually."
+      );
+    }
+
+    let nextUrl: URL;
+    try {
+      nextUrl = new URL(location, currentUrl);
+    } catch (error) {
+      throw new UrlExtractionError(
+        "URL_FETCH_FAILED",
+        "Could not fetch this URL because a redirect target is invalid. Please copy and paste the article text manually.",
+        error
+      );
+    }
+
+    if (nextUrl.protocol !== "http:" && nextUrl.protocol !== "https:") {
+      throw new UrlExtractionError(
+        "URL_FETCH_FAILED",
+        "Could not fetch this URL because a redirect target is not http(s). Please copy and paste the article text manually."
+      );
+    }
+
+    await assertSafeUrlTarget(nextUrl);
+    currentUrl = nextUrl.toString();
+  }
+
+  throw new UrlExtractionError(
+    "URL_FETCH_FAILED",
+    "Could not fetch this URL. Please copy and paste the article text manually."
+  );
+}
+
 export async function extractReadableUrl(rawUrl: string): Promise<UrlExtractionResult> {
-  const canonicalUrl = await validateInputUrl(rawUrl);
+  const initialUrl = await validateInputUrl(rawUrl);
   const controller = new AbortController();
   const timeoutHandle = setTimeout(() => controller.abort(), URL_FETCH_TIMEOUT_MS);
 
-  let response: Response;
   try {
-    response = await fetch(canonicalUrl, {
-      signal: controller.signal,
-      headers: {
-        "user-agent": "tts-reader/0.1"
-      }
-    });
-  } catch (error) {
-    throw new UrlExtractionError(
-      "URL_FETCH_FAILED",
-      "Could not fetch this URL. Please copy and paste the article text manually.",
-      error
-    );
+    const response = await fetchWithValidatedRedirects(initialUrl, controller.signal);
+
+    if (!response.ok) {
+      throw new UrlExtractionError(
+        "URL_FETCH_FAILED",
+        "Could not fetch this URL. Please copy and paste the article text manually."
+      );
+    }
+
+    const canonicalUrl = response.url || initialUrl;
+
+    let sourceHtml: string;
+    try {
+      sourceHtml = await response.text();
+    } catch (error) {
+      throw new UrlExtractionError(
+        "READABILITY_EXTRACTION_FAILED",
+        "Could not extract readable text. Please copy and paste the article text manually.",
+        error
+      );
+    }
+
+    let article: ReturnType<Readability["parse"]>;
+    try {
+      const dom = new JSDOM(sourceHtml, { url: canonicalUrl });
+      const reader = new Readability(dom.window.document);
+      article = reader.parse();
+    } catch (error) {
+      throw new UrlExtractionError(
+        "READABILITY_EXTRACTION_FAILED",
+        "Could not extract readable text. Please copy and paste the article text manually.",
+        error
+      );
+    }
+
+    const text = article?.textContent?.trim() ?? "";
+    const title = article?.title?.trim() ?? "";
+    if (text.length === 0) {
+      throw new UrlExtractionError(
+        "READABILITY_EXTRACTION_FAILED",
+        "Could not extract readable text. Please copy and paste the article text manually."
+      );
+    }
+
+    if (title.length === 0) {
+      throw new UrlExtractionError(
+        "READABILITY_EXTRACTION_FAILED",
+        "Could not extract a readable article title. Please copy and paste the article text manually."
+      );
+    }
+
+    return {
+      canonicalUrl,
+      title,
+      text,
+      sourceHtml
+    };
   } finally {
     clearTimeout(timeoutHandle);
   }
-
-  if (!response.ok) {
-    throw new UrlExtractionError(
-      "URL_FETCH_FAILED",
-      "Could not fetch this URL. Please copy and paste the article text manually."
-    );
-  }
-
-  let sourceHtml: string;
-  try {
-    sourceHtml = await response.text();
-  } catch (error) {
-    throw new UrlExtractionError(
-      "READABILITY_EXTRACTION_FAILED",
-      "Could not extract readable text. Please copy and paste the article text manually.",
-      error
-    );
-  }
-
-  let article: ReturnType<Readability["parse"]>;
-  try {
-    const dom = new JSDOM(sourceHtml, { url: canonicalUrl });
-    const reader = new Readability(dom.window.document);
-    article = reader.parse();
-  } catch (error) {
-    throw new UrlExtractionError(
-      "READABILITY_EXTRACTION_FAILED",
-      "Could not extract readable text. Please copy and paste the article text manually.",
-      error
-    );
-  }
-
-  const text = article?.textContent?.trim() ?? "";
-  const title = article?.title?.trim() ?? "";
-  if (text.length === 0) {
-    throw new UrlExtractionError(
-      "READABILITY_EXTRACTION_FAILED",
-      "Could not extract readable text. Please copy and paste the article text manually."
-    );
-  }
-
-  if (title.length === 0) {
-    throw new UrlExtractionError(
-      "READABILITY_EXTRACTION_FAILED",
-      "Could not extract a readable article title. Please copy and paste the article text manually."
-    );
-  }
-
-  return {
-    canonicalUrl,
-    title,
-    text,
-    sourceHtml
-  };
 }
