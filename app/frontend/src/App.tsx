@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { IngestPage } from "./pages/IngestPage";
 import { LibraryPage } from "./pages/LibraryPage";
 import { ReaderPage } from "./pages/ReaderPage";
@@ -16,20 +16,21 @@ const views: { id: View; label: string }[] = [
 export function App() {
   const [view, setView] = useState<View>("library");
 
-  const content = useMemo(() => {
-    switch (view) {
-      case "library":
-        return <LibraryPage />;
-      case "ingest":
-        return <IngestPage />;
-      case "reader":
-        return <ReaderPage />;
-      case "settings":
-        return <SettingsPage />;
-      default:
-        return null;
-    }
-  }, [view]);
+  let content;
+  switch (view) {
+    case "library":
+      content = <LibraryPage />;
+      break;
+    case "ingest":
+      content = <IngestPage />;
+      break;
+    case "reader":
+      content = <ReaderPage />;
+      break;
+    case "settings":
+      content = <SettingsPage />;
+      break;
+  }
 
   return (
     <div className="app-shell">

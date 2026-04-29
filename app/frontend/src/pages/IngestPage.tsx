@@ -14,8 +14,10 @@ export function IngestPage() {
     try {
       const response = await ingestText({ title, text });
       setStatus(`Saved ${response.document.title}`);
-    } catch {
-      setStatus("Failed to submit ingest request");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown ingest error";
+      console.error("Ingest request failed", error);
+      setStatus(`Failed to submit ingest request: ${message}`);
     }
   }
 

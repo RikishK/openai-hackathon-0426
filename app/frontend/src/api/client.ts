@@ -1,6 +1,6 @@
 import type { IngestResponse, IngestTextRequest } from "@tts-reader/shared";
 
-const API_BASE_URL = "http://localhost:4310/api";
+const API_BASE_URL = "/api";
 
 export async function ingestText(payload: IngestTextRequest): Promise<IngestResponse> {
   const response = await fetch(`${API_BASE_URL}/ingest/text`, {
