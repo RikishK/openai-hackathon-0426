@@ -240,8 +240,16 @@ export function ReaderPage({ documents }: ReaderPageProps) {
     }
 
     if (isPlaying) {
-      void audio.play().catch(() => {
+      void audio.play().catch((error) => {
         setIsPlaying(false);
+
+        const message = getErrorMessage(error);
+        if (isMountedRef.current) {
+          setErrorMessage(`Unable to start playback: ${message}`);
+          return;
+        }
+
+        console.error(`Unable to start playback: ${message}`);
       });
       return;
     }
