@@ -18,6 +18,7 @@ export interface TextChunkRecord {
 
 export interface TextChunksRepository {
   upsert(record: TextChunkRecord): void;
+  clearAll(): void;
 }
 
 export function createTextChunksRepository(db: DatabaseSync): TextChunksRepository {
@@ -37,6 +38,7 @@ export function createTextChunksRepository(db: DatabaseSync): TextChunksReposito
        speaker_hint = excluded.speaker_hint,
        voice_hint = excluded.voice_hint`
   );
+  const clearAllStatement = db.prepare(`DELETE FROM text_chunks`);
 
   return {
     upsert(record) {
@@ -55,6 +57,9 @@ export function createTextChunksRepository(db: DatabaseSync): TextChunksReposito
         record.voiceHint ?? null,
         nowIso()
       );
+    },
+    clearAll() {
+      clearAllStatement.run();
     }
   };
 }

@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 export interface AudioManifestEntry {
@@ -17,6 +17,7 @@ export interface AudioManifest {
 
 export interface FileStore {
   ensureStorageLayout(): Promise<void>;
+  clearAudioCache(): Promise<void>;
   getDocumentDirectory(documentId: string): string;
   getDocumentSourcePath(documentId: string, extension: string): string;
   getAudioProfileDirectory(documentId: string, profileHash: string): string;
@@ -49,6 +50,10 @@ export function createFileStore(options: FileStoreOptions = {}): FileStore {
       await mkdir(audioRoot, { recursive: true });
       await mkdir(cuesRoot, { recursive: true });
       await mkdir(tempRoot, { recursive: true });
+    },
+    async clearAudioCache() {
+      await rm(audioRoot, { recursive: true, force: true });
+      await mkdir(audioRoot, { recursive: true });
     },
     getDocumentDirectory(documentId) {
       return join(documentsRoot, documentId);
