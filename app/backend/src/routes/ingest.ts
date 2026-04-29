@@ -6,6 +6,8 @@ import { extractTextFromPdfBytes } from "../services/ingestion/pdfExtractor.js";
 import { persistDocumentSourceText } from "../services/ingestion/textIngest.js";
 import { getStorageContext } from "../services/storage/db.js";
 
+const BASE64_PATTERN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+
 export const registerIngestRoutes: FastifyPluginAsync = async (app) => {
   app.post<{ Body: IngestTextRequest; Reply: IngestResponse }>(
     "/api/ingest/text",
@@ -75,6 +77,13 @@ export const registerIngestRoutes: FastifyPluginAsync = async (app) => {
         });
       }
 
+      if (!BASE64_PATTERN.test(base64Content)) {
+        return reply.code(400).send({
+          error: "INVALID_PDF_PAYLOAD",
+          message: "PDF payload is not valid base64"
+        });
+      }
+
       const pdfBytes = Buffer.from(base64Content, "base64");
       if (pdfBytes.length === 0) {
         return reply.code(400).send({
@@ -85,7 +94,7 @@ export const registerIngestRoutes: FastifyPluginAsync = async (app) => {
 
       let extractedPdf;
       try {
-        extractedPdf = extractTextFromPdfBytes(pdfBytes);
+        extractedPdf = await extractTextFromPdfBytes(pdfBytes);
       } catch (error) {
         const extractionError = error instanceof Error ? error.message : "Unable to extract text from PDF payload";
         return reply.code(422).send({

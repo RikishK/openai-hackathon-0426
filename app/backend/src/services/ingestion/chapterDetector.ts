@@ -59,20 +59,11 @@ export function detectPdfChapters(pages: ExtractedPdfPage[]): ChapterDetectionRe
     throw new Error("Cannot detect chapters from an empty page list");
   }
 
-  const totalPages = pages.length;
   const chapterCandidates = getChapterCandidates(pages);
   if (chapterCandidates.length === 0) {
     return {
-      chapters: [
-        {
-          index: 0,
-          title: "Full document",
-          startPage: 1,
-          endPage: totalPages,
-          detectionMethod: "fallback_full_document"
-        }
-      ],
-      warnings: ["No chapter headings were detected; using a single full-document chapter"]
+      chapters: [],
+      warnings: ["No chapter headings were detected in the PDF"]
     };
   }
 
@@ -82,7 +73,7 @@ export function detectPdfChapters(pages: ExtractedPdfPage[]): ChapterDetectionRe
       index,
       title: candidate.title,
       startPage: candidate.startPage,
-      endPage: nextChapter ? Math.max(candidate.startPage, nextChapter.startPage - 1) : totalPages,
+      endPage: nextChapter ? Math.max(candidate.startPage, nextChapter.startPage - 1) : pages.length,
       detectionMethod: "heading_heuristic"
     };
   });

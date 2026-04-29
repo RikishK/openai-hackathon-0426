@@ -14,9 +14,11 @@
   "dependencies": {
     "@fastify/cors": "^11.1.0",
     "@tts-reader/shared": "file:../shared",
-    "fastify": "^5.2.2"
+    "fastify": "^5.2.2",
+    "pdfjs-dist": "^5.7.284"
   },
   "devDependencies": {
+    "pdf-lib": "^1.17.1",
     "tsx": "^4.19.3"
   }
 }

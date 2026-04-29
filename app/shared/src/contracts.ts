@@ -64,7 +64,6 @@ export interface IngestUrlRequest {
 export interface IngestPdfRequest {
   title: string;
   pdfBase64: string;
-  fileName?: string;
 }
 
 export interface IngestResponse {
