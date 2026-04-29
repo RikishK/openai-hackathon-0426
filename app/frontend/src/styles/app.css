@@ -156,6 +156,12 @@ button:disabled {
   letter-spacing: 0.04em;
 }
 
+.player-time,
+.reader-resume {
+  margin: 0;
+  color: #3d4f63;
+}
+
 @media (max-width: 640px) {
   .app-shell {
     padding-top: 20px;

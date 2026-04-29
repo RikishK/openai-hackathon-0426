@@ -2,7 +2,10 @@ import type {
   IngestPdfRequest,
   IngestResponse,
   IngestTextRequest,
-  LibraryResponse
+  LibraryResponse,
+  PlayerResponse,
+  PlayerResumeRequest,
+  PlayerResumeResponse
 } from "@tts-reader/shared";
 
 const API_BASE_URL = "/api";
@@ -56,4 +59,24 @@ export async function ingestPdf(payload: IngestPdfRequest): Promise<IngestRespon
 export async function getLibrary(): Promise<LibraryResponse> {
   const response = await fetch(`${API_BASE_URL}/library`);
   return parseResponseOrThrow<LibraryResponse>(response);
+}
+
+export async function getPlayer(documentId: string): Promise<PlayerResponse> {
+  const response = await fetch(`${API_BASE_URL}/player/${documentId}`);
+  return parseResponseOrThrow<PlayerResponse>(response);
+}
+
+export async function savePlayerResume(
+  documentId: string,
+  payload: PlayerResumeRequest
+): Promise<PlayerResumeResponse> {
+  const response = await fetch(`${API_BASE_URL}/player/${documentId}/resume`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  return parseResponseOrThrow<PlayerResumeResponse>(response);
 }
