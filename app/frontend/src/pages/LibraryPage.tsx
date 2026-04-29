@@ -26,24 +26,35 @@ export function LibraryPage({ documents, isLoading, errorMessage }: LibraryPageP
       {errorMessage ? <p>{errorMessage}</p> : null}
       {documents.length === 0 ? <p>No documents have been ingested yet.</p> : null}
       <ul className="library-list" aria-live="polite">
-        {documents.map(({ document, chapters }) => (
-          <li key={document.id} className="library-item stack">
-            <div className="row spread">
-              <h3>{document.title}</h3>
-              <span className="pill">{document.type.toUpperCase()}</span>
-            </div>
-            <p>{chapterLabel(chapters.length)}</p>
-            {chapters.length > 0 ? (
-              <ol className="library-chapters">
-                {chapters.map((chapter) => (
-                  <li key={chapter.id}>
-                    {chapter.index + 1}. {chapter.title}
-                  </li>
-                ))}
-              </ol>
-            ) : null}
-          </li>
-        ))}
+        {documents.map(({ document, chapters, generatedChapterIds }) => {
+          const generatedChapterIdSet = new Set(generatedChapterIds);
+          const generatedCount = chapters.filter((chapter) => generatedChapterIdSet.has(chapter.id)).length;
+
+          return (
+            <li key={document.id} className="library-item stack">
+              <div className="row spread">
+                <h3>{document.title}</h3>
+                <span className="pill">{document.type.toUpperCase()}</span>
+              </div>
+              <p>{chapterLabel(chapters.length)}</p>
+              {chapters.length > 0 ? (
+                <p>
+                  Generated audio: {generatedCount}/{chapters.length} chapter{chapters.length === 1 ? "" : "s"}
+                </p>
+              ) : null}
+              {chapters.length > 0 ? (
+                <ol className="library-chapters">
+                  {chapters.map((chapter) => (
+                    <li key={chapter.id}>
+                      {chapter.index + 1}. {chapter.title}
+                      {generatedChapterIdSet.has(chapter.id) ? " (generated)" : ""}
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

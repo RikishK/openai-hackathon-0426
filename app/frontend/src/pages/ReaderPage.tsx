@@ -1,12 +1,13 @@
-import type { DocumentChapter } from "@tts-reader/shared";
+import type { DocumentChapter, EstimateResponse, JobState, VoiceProfile } from "@tts-reader/shared";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getPlayer, savePlayerResume } from "../api/client";
+import { estimateGeneration, generateAudio, getGenerationJob, getPlayer, savePlayerResume } from "../api/client";
 import { A11yCueManager } from "../components/A11yCueManager";
 import { ChapterPicker } from "../components/ChapterPicker";
 import { JobProgress } from "../components/JobProgress";
 import { PlayerControls } from "../components/PlayerControls";
 import type { LibraryDocumentEntry } from "./libraryState";
 import {
+  buildChapterScope,
   buildPlaybackSegments,
   getNextSegmentStart,
   getTotalDurationMs,
@@ -16,9 +17,17 @@ import {
 
 interface ReaderPageProps {
   documents: LibraryDocumentEntry[];
+  onGeneratedScope(documentId: string, chapterIds: string[]): void;
 }
 
 const DEFAULT_PROFILE_HASH = "default";
+const DEFAULT_GENERATION_PROFILE: VoiceProfile = {
+  model: "gpt-4o-mini-tts",
+  voice: "alloy",
+  speed: 1
+};
+const JOB_POLL_INTERVAL_MS = 1500;
+const JOB_POLL_TIMEOUT_MS = 120000;
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -26,6 +35,12 @@ function getErrorMessage(error: unknown): string {
   }
 
   return String(error);
+}
+
+function wait(delayMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, delayMs);
+  });
 }
 
 function toChapterOptions(document: LibraryDocumentEntry | null, chapterIdsFromAudio: string[]): DocumentChapter[] {
@@ -55,7 +70,7 @@ function toPlayableAudioChunks(
   });
 }
 
-export function ReaderPage({ documents }: ReaderPageProps) {
+export function ReaderPage({ documents, onGeneratedScope }: ReaderPageProps) {
   const [selectedDocumentId, setSelectedDocumentId] = useState<string>(documents[0]?.document.id ?? "");
   const [selectedChapterId, setSelectedChapterId] = useState<string>("all");
   const [audioChunks, setAudioChunks] = useState<PlayableAudioChunk[]>([]);
@@ -65,6 +80,15 @@ export function ReaderPage({ documents }: ReaderPageProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [generationMode, setGenerationMode] = useState<"all" | "selected">("all");
+  const [selectedGenerationChapterIds, setSelectedGenerationChapterIds] = useState<string[]>([]);
+  const [estimate, setEstimate] = useState<EstimateResponse | null>(null);
+  const [isEstimating, setIsEstimating] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationJobId, setGenerationJobId] = useState<string | null>(null);
+  const [generationJobState, setGenerationJobState] = useState<JobState | null>(null);
+  const [generationJobProgress, setGenerationJobProgress] = useState(0);
+  const [playerReloadToken, setPlayerReloadToken] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const latestSeekMsRef = useRef(0);
   const lastSavedResumeMsRef = useRef<number | null>(null);
@@ -144,7 +168,7 @@ export function ReaderPage({ documents }: ReaderPageProps) {
     return () => {
       isMounted = false;
     };
-  }, [selectedDocumentId]);
+  }, [playerReloadToken, selectedDocumentId]);
 
   const chapterIdsFromAudio = useMemo(
     () => [...new Set(audioChunks.map((chunk) => chunk.chapterId))],
@@ -162,6 +186,30 @@ export function ReaderPage({ documents }: ReaderPageProps) {
   );
 
   useEffect(() => {
+    const knownChapterIdSet = new Set(chapterOptions.map((chapter) => chapter.id));
+    setSelectedGenerationChapterIds((current) => {
+      const filtered = current.filter((chapterId) => knownChapterIdSet.has(chapterId));
+      if (filtered.length > 0) {
+        return filtered;
+      }
+
+      return chapterOptions.map((chapter) => chapter.id);
+    });
+  }, [chapterOptions]);
+
+  const generationChapterScope = useMemo(
+    () => buildChapterScope(chapterOptions, generationMode, selectedGenerationChapterIds),
+    [chapterOptions, generationMode, selectedGenerationChapterIds]
+  );
+
+  const canEstimate =
+    selectedDocumentId.length > 0 &&
+    !isLoading &&
+    !isEstimating &&
+    !isGenerating &&
+    (generationChapterScope.mode === "all" || generationChapterScope.chapterIds.length > 0);
+
+  useEffect(() => {
     if (selectedChapterId === "all") {
       return;
     }
@@ -171,6 +219,10 @@ export function ReaderPage({ documents }: ReaderPageProps) {
       setSelectedChapterId("all");
     }
   }, [chapterOptions, selectedChapterId]);
+
+  useEffect(() => {
+    setEstimate(null);
+  }, [generationChapterScope.chapterIds, generationChapterScope.mode, selectedDocumentId]);
 
   const playbackSegments = useMemo(
     () => buildPlaybackSegments(audioChunks, selectedChapterId),
@@ -308,6 +360,12 @@ export function ReaderPage({ documents }: ReaderPageProps) {
     setSelectedChapterId("all");
     setResumePositionMs(0);
     setSeekMs(0);
+    setGenerationMode("all");
+    setSelectedGenerationChapterIds([]);
+    setEstimate(null);
+    setGenerationJobId(null);
+    setGenerationJobState(null);
+    setGenerationJobProgress(0);
     setErrorMessage(null);
   }
 
@@ -363,6 +421,105 @@ export function ReaderPage({ documents }: ReaderPageProps) {
     }
   }
 
+  function handleGenerationModeChange(mode: "all" | "selected") {
+    setGenerationMode(mode);
+    setGenerationJobId(null);
+    setGenerationJobState(null);
+    setGenerationJobProgress(0);
+  }
+
+  function handleGenerationChapterToggle(chapterId: string) {
+    setSelectedGenerationChapterIds((current) => {
+      if (current.includes(chapterId)) {
+        return current.filter((id) => id !== chapterId);
+      }
+
+      return [...current, chapterId];
+    });
+  }
+
+  function handleSelectAllGenerationChapters() {
+    setSelectedGenerationChapterIds(chapterOptions.map((chapter) => chapter.id));
+  }
+
+  function handleClearGenerationChapters() {
+    setSelectedGenerationChapterIds([]);
+  }
+
+  async function handleEstimateGeneration() {
+    if (!selectedDocumentId) {
+      return;
+    }
+
+    setIsEstimating(true);
+    setGenerationJobId(null);
+    setGenerationJobState(null);
+    setGenerationJobProgress(0);
+
+    try {
+      const response = await estimateGeneration({
+        documentId: selectedDocumentId,
+        chapterScope: generationChapterScope,
+        profile: DEFAULT_GENERATION_PROFILE
+      });
+      setEstimate(response);
+      setErrorMessage(null);
+    } catch (error) {
+      setEstimate(null);
+      setErrorMessage(`Unable to estimate generation: ${getErrorMessage(error)}`);
+    } finally {
+      setIsEstimating(false);
+    }
+  }
+
+  async function handleGenerateAudio() {
+    if (!selectedDocumentId || estimate === null || isGenerating) {
+      return;
+    }
+
+    setIsGenerating(true);
+    setGenerationJobState("queued");
+    setGenerationJobProgress(0);
+
+    try {
+      const response = await generateAudio({
+        documentId: selectedDocumentId,
+        chapterScope: generationChapterScope,
+        profile: DEFAULT_GENERATION_PROFILE,
+        confirmedEstimate: true
+      });
+      setGenerationJobId(response.jobId);
+      setGenerationJobState(response.state);
+
+      const pollStartedAt = Date.now();
+      while (Date.now() - pollStartedAt < JOB_POLL_TIMEOUT_MS) {
+        const status = await getGenerationJob(response.jobId);
+        setGenerationJobState(status.state);
+        setGenerationJobProgress(status.progress);
+
+        if (status.state === "done") {
+          onGeneratedScope(selectedDocumentId, generationChapterScope.chapterIds);
+          setPlayerReloadToken((current) => current + 1);
+          setErrorMessage(null);
+          return;
+        }
+
+        if (status.state === "failed") {
+          setErrorMessage(`Generation job ${status.jobId} failed`);
+          return;
+        }
+
+        await wait(JOB_POLL_INTERVAL_MS);
+      }
+
+      setErrorMessage(`Generation job ${response.jobId} timed out while polling`);
+    } catch (error) {
+      setErrorMessage(`Unable to generate audio: ${getErrorMessage(error)}`);
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
   return (
     <section className="stack" aria-labelledby="reader-title">
       <h2 id="reader-title">Reader</h2>
@@ -391,6 +548,80 @@ export function ReaderPage({ documents }: ReaderPageProps) {
         onChange={handleChapterChange}
         disabled={isLoading || playbackSegments.length === 0}
       />
+      <div className="card stack" aria-live="polite">
+        <strong>Generate audio</strong>
+        <fieldset className="generation-scope" disabled={isLoading || isEstimating || isGenerating}>
+          <legend>Chapter scope</legend>
+          <label className="row">
+            <input
+              type="radio"
+              name="generation-scope"
+              value="all"
+              checked={generationMode === "all"}
+              onChange={() => handleGenerationModeChange("all")}
+            />
+            <span>All chapters</span>
+          </label>
+          <label className="row">
+            <input
+              type="radio"
+              name="generation-scope"
+              value="selected"
+              checked={generationMode === "selected"}
+              onChange={() => handleGenerationModeChange("selected")}
+            />
+            <span>Selected chapters</span>
+          </label>
+        </fieldset>
+        {generationMode === "selected" ? (
+          <div className="stack">
+            <div className="row">
+              <button type="button" onClick={handleSelectAllGenerationChapters} disabled={chapterOptions.length === 0}>
+                Select all
+              </button>
+              <button type="button" onClick={handleClearGenerationChapters} disabled={chapterOptions.length === 0}>
+                Clear
+              </button>
+            </div>
+            <ul className="chapter-list">
+              {chapterOptions.map((chapter) => {
+                const isChecked = selectedGenerationChapterIds.includes(chapter.id);
+                return (
+                  <li key={chapter.id}>
+                    <label className="chapter-option">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => handleGenerationChapterToggle(chapter.id)}
+                      />
+                      <span>
+                        {chapter.index + 1}. {chapter.title}
+                      </span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : null}
+        <div className="row">
+          <button type="button" onClick={handleEstimateGeneration} disabled={!canEstimate}>
+            {isEstimating ? "Estimating..." : "Estimate"}
+          </button>
+          <button type="button" onClick={() => void handleGenerateAudio()} disabled={estimate === null || isGenerating}>
+            {isGenerating ? "Generating..." : "Confirm + generate"}
+          </button>
+        </div>
+        {estimate ? (
+          <div className="estimate-grid" role="status">
+            <p>Chars: {estimate.estimatedChars.toLocaleString()}</p>
+            <p>Tokens: {estimate.estimatedTokens.toLocaleString()}</p>
+            <p>Cost: ${estimate.estimatedCostUsd.toFixed(4)}</p>
+            <p>Cache hit: {estimate.cacheHitPercent}%</p>
+            {estimate.warnings.length > 0 ? <p>Warnings: {estimate.warnings.join(" | ")}</p> : null}
+          </div>
+        ) : null}
+      </div>
       <PlayerControls
         isPlaying={isPlaying}
         disabled={isLoading || playbackSegments.length === 0}
@@ -429,7 +660,9 @@ export function ReaderPage({ documents }: ReaderPageProps) {
           </ul>
         )}
       </div>
-      <JobProgress state={isLoading ? "processing" : "done"} />
+      <JobProgress state={generationJobState ?? (isLoading ? "processing" : "done")} />
+      {generationJobId ? <p>Job ID: {generationJobId}</p> : null}
+      {generationJobState === "processing" ? <p>Job progress: {generationJobProgress}%</p> : null}
       {errorMessage ? <p role="alert">{errorMessage}</p> : null}
       <p className="reader-resume">Resume position: {Math.floor(resumePositionMs / 1000)}s</p>
       <A11yCueManager cue="reader_loaded" />

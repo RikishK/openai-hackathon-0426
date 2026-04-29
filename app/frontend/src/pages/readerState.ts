@@ -1,4 +1,4 @@
-import type { AudioChunk } from "@tts-reader/shared";
+import type { AudioChunk, ChapterScope, DocumentChapter } from "@tts-reader/shared";
 
 export interface PlayableAudioChunk extends AudioChunk {
   downloadUrl: string;
@@ -82,4 +82,28 @@ export function resolvePlaybackCursor(segments: PlaybackSegment[], requestedPosi
 export function getNextSegmentStart(segments: PlaybackSegment[], segmentIndex: number): number | null {
   const nextSegment = segments[segmentIndex + 1];
   return nextSegment ? nextSegment.startMs : null;
+}
+
+export function buildChapterScope(
+  chapters: DocumentChapter[],
+  mode: "all" | "selected",
+  selectedChapterIds: string[]
+): ChapterScope {
+  const chapterIds = chapters.map((chapter) => chapter.id);
+  if (mode === "all") {
+    return {
+      mode: "all",
+      chapterIds
+    };
+  }
+
+  const knownChapterIdSet = new Set(chapterIds);
+  const dedupedSelectedChapterIds = [...new Set(selectedChapterIds)].filter((chapterId) =>
+    knownChapterIdSet.has(chapterId)
+  );
+
+  return {
+    mode: "selected",
+    chapterIds: dedupedSelectedChapterIds
+  };
 }
