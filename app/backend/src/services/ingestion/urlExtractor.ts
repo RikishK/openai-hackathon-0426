@@ -27,63 +27,231 @@ export class UrlExtractionError extends Error {
   }
 }
 
-function isBlockedIpv4(address: string): boolean {
+function parseIpv4Address(address: string): number | null {
   const octets = address.split(".").map((segment) => Number.parseInt(segment, 10));
   if (octets.length !== 4 || octets.some((octet) => Number.isNaN(octet) || octet < 0 || octet > 255)) {
-    return true;
+    return null;
   }
 
-  const a = octets[0] ?? -1;
-  const b = octets[1] ?? -1;
-  return (
-    a === 0 ||
-    a === 10 ||
-    a === 127 ||
-    (a === 169 && b === 254) ||
-    (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 168) ||
-    (a === 100 && b >= 64 && b <= 127)
-  );
+  return ((octets[0] ?? 0) << 24) + ((octets[1] ?? 0) << 16) + ((octets[2] ?? 0) << 8) + (octets[3] ?? 0);
 }
 
-function isBlockedIpv6(address: string): boolean {
-  const normalized = address.toLowerCase();
-  if (normalized === "::" || normalized === "::1") {
-    return true;
+function isGlobalUnicastIpv4(address: string): boolean {
+  const numeric = parseIpv4Address(address);
+  if (numeric === null) {
+    return false;
   }
 
-  if (normalized.startsWith("fc") || normalized.startsWith("fd")) {
-    return true;
+  const a = (numeric >>> 24) & 0xff;
+  const b = (numeric >>> 16) & 0xff;
+  const c = (numeric >>> 8) & 0xff;
+  const d = numeric & 0xff;
+
+  if (a === 0 || a === 10 || a === 127) {
+    return false;
   }
 
-  if (
-    normalized.startsWith("fe8") ||
-    normalized.startsWith("fe9") ||
-    normalized.startsWith("fea") ||
-    normalized.startsWith("feb")
-  ) {
-    return true;
+  if (a === 100 && b >= 64 && b <= 127) {
+    return false;
   }
 
-  const mappedV4 = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-  if (mappedV4?.[1]) {
-    return isBlockedIpv4(mappedV4[1]);
+  if (a === 169 && b === 254) {
+    return false;
+  }
+
+  if (a === 172 && b >= 16 && b <= 31) {
+    return false;
+  }
+
+  if (a === 192 && b === 168) {
+    return false;
+  }
+
+  if (a === 192 && b === 0 && (c === 0 || c === 2)) {
+    return false;
+  }
+
+  if (a === 192 && b === 88 && c === 99) {
+    return false;
+  }
+
+  if (a === 198 && (b === 18 || b === 19)) {
+    return false;
+  }
+
+  if (a === 198 && b === 51 && c === 100) {
+    return false;
+  }
+
+  if (a === 203 && b === 0 && c === 113) {
+    return false;
+  }
+
+  if (a >= 224) {
+    return false;
+  }
+
+  if (a === 255 && b === 255 && c === 255 && d === 255) {
+    return false;
+  }
+
+  return true;
+}
+
+function parseIpv6Segments(address: string): number[] | null {
+  if (address.includes("%")) {
+    return null;
+  }
+
+  const doubleColonIndex = address.indexOf("::");
+  if (doubleColonIndex !== -1 && address.indexOf("::", doubleColonIndex + 1) !== -1) {
+    return null;
+  }
+
+  const parseSide = (side: string): number[] | null => {
+    if (side.length === 0) {
+      return [];
+    }
+
+    const tokens = side.split(":");
+    const values: number[] = [];
+    for (let index = 0; index < tokens.length; index += 1) {
+      const token = tokens[index];
+      if (!token) {
+        return null;
+      }
+
+      if (token.includes(".")) {
+        if (index !== tokens.length - 1) {
+          return null;
+        }
+        const ipv4 = parseIpv4Address(token);
+        if (ipv4 === null) {
+          return null;
+        }
+        values.push((ipv4 >>> 16) & 0xffff, ipv4 & 0xffff);
+        continue;
+      }
+
+      if (!/^[0-9a-fA-F]{1,4}$/.test(token)) {
+        return null;
+      }
+
+      values.push(Number.parseInt(token, 16));
+    }
+
+    return values;
+  };
+
+  if (doubleColonIndex === -1) {
+    const full = parseSide(address);
+    if (!full || full.length !== 8) {
+      return null;
+    }
+    return full;
+  }
+
+  const left = parseSide(address.slice(0, doubleColonIndex));
+  const right = parseSide(address.slice(doubleColonIndex + 2));
+  if (!left || !right) {
+    return null;
+  }
+
+  const missing = 8 - (left.length + right.length);
+  if (missing < 1) {
+    return null;
+  }
+
+  return [...left, ...new Array<number>(missing).fill(0), ...right];
+}
+
+function isGlobalUnicastIpv6(address: string): boolean {
+  const segments = parseIpv6Segments(address.toLowerCase());
+  if (!segments) {
+    return false;
+  }
+
+  if ((segments[0] ?? 0) === 0 && (segments[1] ?? 0) === 0 && (segments[2] ?? 0) === 0 && (segments[3] ?? 0) === 0 && (segments[4] ?? 0) === 0 && (segments[5] ?? 0) === 0xffff) {
+    const mapped = `${((segments[6] ?? 0) >>> 8) & 0xff}.${(segments[6] ?? 0) & 0xff}.${((segments[7] ?? 0) >>> 8) & 0xff}.${(segments[7] ?? 0) & 0xff}`;
+    return isGlobalUnicastIpv4(mapped);
+  }
+
+  const first = segments[0] ?? 0;
+  if (first === 0) {
+    return false;
+  }
+
+  if ((first & 0xfe00) === 0xfc00) {
+    return false;
+  }
+
+  if ((first & 0xffc0) === 0xfe80) {
+    return false;
+  }
+
+  if ((first & 0xff00) === 0xff00) {
+    return false;
+  }
+
+  if ((first & 0xe000) !== 0x2000) {
+    return false;
+  }
+
+  if ((segments[0] ?? 0) === 0x2001 && (segments[1] ?? 0) === 0x0db8) {
+    return false;
+  }
+
+  return true;
+}
+
+export function isGlobalUnicastAddress(address: string): boolean {
+  const version = isIP(address);
+  if (version === 4) {
+    return isGlobalUnicastIpv4(address);
+  }
+
+  if (version === 6) {
+    return isGlobalUnicastIpv6(address);
   }
 
   return false;
 }
 
-function isBlockedAddress(address: string): boolean {
-  const version = isIP(address);
-  if (version === 4) {
-    return isBlockedIpv4(address);
+interface LookupEntry {
+  address: string;
+  family: number;
+}
+
+function getUnsafeTargetError(): UrlExtractionError {
+  return new UrlExtractionError(
+    "URL_FETCH_FAILED",
+    "This URL target is not allowed for security reasons. Please copy and paste the article text manually."
+  );
+}
+
+export function selectPinnedTarget(resolved: LookupEntry[]): PinnedTarget {
+  if (resolved.length === 0) {
+    throw getUnsafeTargetError();
   }
 
-  if (version === 6) {
-    return isBlockedIpv6(address);
+  for (const entry of resolved) {
+    if (!isGlobalUnicastAddress(entry.address)) {
+      throw getUnsafeTargetError();
+    }
   }
 
-  return true;
+  const selected = resolved[0];
+  if (!selected || (selected.family !== 4 && selected.family !== 6)) {
+    throw new UrlExtractionError(
+      "URL_FETCH_FAILED",
+      "Could not resolve this URL host. Please copy and paste the article text manually."
+    );
+  }
+
+  return {
+    address: selected.address,
+    family: selected.family
+  };
 }
 
 interface PinnedTarget {
@@ -94,19 +262,13 @@ interface PinnedTarget {
 async function resolveSafeUrlTarget(url: URL): Promise<PinnedTarget> {
   const hostname = url.hostname.toLowerCase();
   if (hostname === "localhost" || hostname.endsWith(".localhost")) {
-    throw new UrlExtractionError(
-      "URL_FETCH_FAILED",
-      "This URL target is not allowed for security reasons. Please copy and paste the article text manually."
-    );
+    throw getUnsafeTargetError();
   }
 
   const literalVersion = isIP(hostname);
   if (literalVersion !== 0) {
-    if (isBlockedAddress(hostname)) {
-      throw new UrlExtractionError(
-        "URL_FETCH_FAILED",
-        "This URL target is not allowed for security reasons. Please copy and paste the article text manually."
-      );
+    if (!isGlobalUnicastAddress(hostname)) {
+      throw getUnsafeTargetError();
     }
 
     if (literalVersion !== 4 && literalVersion !== 6) {
@@ -133,25 +295,7 @@ async function resolveSafeUrlTarget(url: URL): Promise<PinnedTarget> {
     );
   }
 
-  if (resolved.length === 0 || resolved.some((entry) => isBlockedAddress(entry.address))) {
-    throw new UrlExtractionError(
-      "URL_FETCH_FAILED",
-      "This URL target is not allowed for security reasons. Please copy and paste the article text manually."
-    );
-  }
-
-  const selected = resolved[0];
-  if (!selected || (selected.family !== 4 && selected.family !== 6)) {
-    throw new UrlExtractionError(
-      "URL_FETCH_FAILED",
-      "Could not resolve this URL host. Please copy and paste the article text manually."
-    );
-  }
-
-  return {
-    address: selected.address,
-    family: selected.family
-  };
+  return selectPinnedTarget(resolved);
 }
 
 async function validateInputUrl(rawUrl: string): Promise<string> {
