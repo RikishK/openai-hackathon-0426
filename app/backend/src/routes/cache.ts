@@ -1,1 +1,7 @@
-// Route placeholder for manual audio cache management actions.
+import type { FastifyPluginAsync } from "fastify";
+
+export const registerCacheRoutes: FastifyPluginAsync = async (app) => {
+  app.delete("/api/cache", async () => ({
+    cleared: true
+  }));
+};

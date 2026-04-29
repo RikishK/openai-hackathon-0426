@@ -1,0 +1,15 @@
+{
+  "name": "@tts-reader/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/contracts.ts",
+  "main": "src/contracts.ts",
+  "types": "src/contracts.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}
