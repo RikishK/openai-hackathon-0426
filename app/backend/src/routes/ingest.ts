@@ -3,16 +3,6 @@ import type { FastifyPluginAsync } from "fastify";
 import { randomUUID } from "node:crypto";
 import { getStorageContext } from "../services/storage/db.js";
 
-const defaultIngestResponse: IngestResponse = {
-  document: {
-    id: "doc_seed",
-    title: "Seed Document",
-    type: "text"
-  },
-  chapters: [{ id: "all", index: 0, title: "Full document" }],
-  warnings: []
-};
-
 export const registerIngestRoutes: FastifyPluginAsync = async (app) => {
   app.post<{ Body: IngestTextRequest; Reply: IngestResponse }>(
     "/api/ingest/text",
@@ -112,9 +102,9 @@ export const registerIngestRoutes: FastifyPluginAsync = async (app) => {
     );
 
     return {
-      ...defaultIngestResponse,
       document,
-      chapters
+      chapters,
+      warnings: []
     };
   });
 };

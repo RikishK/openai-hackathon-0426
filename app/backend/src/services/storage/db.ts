@@ -1,6 +1,6 @@
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { DatabaseSync } from "node:sqlite";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { createFileStore, type FileStore } from "./fileStore.js";
 import { createStorageRepositories, type StorageRepositories } from "./repositories/index.js";
 
@@ -112,6 +112,7 @@ export async function initializeStorage(options: StorageInitOptions = {}): Promi
   const migrationsDir = options.migrationsDir ?? resolve(process.cwd(), "app/backend/migrations");
   const dataDir = options.dataDir ?? resolve(process.cwd(), "data");
 
+  await mkdir(dirname(dbPath), { recursive: true });
   await ensureWritableDatabaseFile(dbPath);
 
   const db = new DatabaseSync(dbPath);

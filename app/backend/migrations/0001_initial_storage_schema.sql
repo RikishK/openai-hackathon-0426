@@ -78,7 +78,7 @@ CREATE INDEX IF NOT EXISTS text_chunks_doc_chapter_idx
 CREATE TABLE IF NOT EXISTS audio_chunks (
   id TEXT PRIMARY KEY,
   doc_id TEXT NOT NULL,
-  chapter_id TEXT,
+  chapter_id TEXT NOT NULL,
   profile_hash TEXT NOT NULL,
   chunk_index INTEGER NOT NULL,
   file_path TEXT NOT NULL,
@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS audio_chunks (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (doc_id) REFERENCES source_documents(id) ON DELETE CASCADE,
-  FOREIGN KEY (chapter_id) REFERENCES document_chapters(id) ON DELETE SET NULL,
+  FOREIGN KEY (chapter_id) REFERENCES document_chapters(id) ON DELETE CASCADE,
   FOREIGN KEY (profile_hash) REFERENCES generation_profiles(profile_hash)
 );
 

@@ -9,7 +9,7 @@ function createProfileHash(model: string, voice: string, speed: number): string 
 }
 
 export const registerGenerateRoutes: FastifyPluginAsync = async (app) => {
-  app.post<{ Reply: GenerateResponse }>("/api/generate", async () => {
+  app.post<{ Reply: GenerateResponse | { error: string; message: string } }>("/api/generate", async (_, reply) => {
     const storage = getStorageContext();
     const profileHash = createProfileHash("gpt-audio-1.5", "alloy", 1);
 
@@ -24,11 +24,13 @@ export const registerGenerateRoutes: FastifyPluginAsync = async (app) => {
     });
 
     const documents = storage.repositories.documents.list();
-    const targetDocument = documents[0] ?? storage.repositories.documents.create({
-      id: `doc_${randomUUID()}`,
-      type: "text",
-      title: "Untitled document"
-    });
+    const targetDocument = documents[0];
+    if (!targetDocument) {
+      return reply.code(400).send({
+        error: "DOCUMENT_REQUIRED",
+        message: "Ingest a document before creating a generation job"
+      });
+    }
 
     const status = storage.repositories.generationJobs.create({
       id: `job_${randomUUID()}`,

@@ -15,6 +15,7 @@ export interface ResumeStateRecord {
 export interface ResumeStatesRepository {
   save(record: ResumeStateRecord): void;
   getPlaybackPosition(record: Omit<ResumeStateRecord, "playbackPositionMs">): number | null;
+  getLatestPlaybackPositionByDocument(documentId: string): number | null;
 }
 
 export function createResumeStatesRepository(db: DatabaseSync): ResumeStatesRepository {
@@ -29,6 +30,13 @@ export function createResumeStatesRepository(db: DatabaseSync): ResumeStatesRepo
     `SELECT playback_position_ms
      FROM resume_states
      WHERE doc_id = ? AND chapter_id = ? AND profile_hash = ?
+     LIMIT 1`
+  );
+  const getLatestPlaybackByDocumentStatement = db.prepare(
+    `SELECT playback_position_ms
+     FROM resume_states
+     WHERE doc_id = ?
+     ORDER BY updated_at DESC
      LIMIT 1`
   );
 
@@ -49,6 +57,14 @@ export function createResumeStatesRepository(db: DatabaseSync): ResumeStatesRepo
         record.chapterId,
         record.profileHash
       );
+      if (!row) {
+        return null;
+      }
+
+      return row.playback_position_ms;
+    },
+    getLatestPlaybackPositionByDocument(documentId) {
+      const row = getDbValue<ResumeStateRow>(getLatestPlaybackByDocumentStatement, documentId);
       if (!row) {
         return null;
       }

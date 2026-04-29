@@ -13,7 +13,7 @@ interface AudioChunkRow {
 export interface AudioChunkRecord {
   id: string;
   documentId: string;
-  chapterId: string | null;
+  chapterId: string;
   profileHash: string;
   chunkIndex: number;
   filePath: string;
