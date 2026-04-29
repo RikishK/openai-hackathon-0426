@@ -32,10 +32,10 @@ export function App() {
         }
 
         setLibraryDocuments(
-          library.documents.map((document) => ({
-            document,
-            chapters: [],
-            generatedChapterIds: []
+          library.documents.map((entry) => ({
+            document: entry.document,
+            chapters: entry.chapters,
+            generatedChapterIds: entry.generatedChapterIds
           }))
         );
         setLibraryErrorMessage(null);

@@ -106,7 +106,11 @@ export interface JobsParams {
 export type JobsResponse = JobStatus;
 
 export interface LibraryResponse {
-  documents: SourceDocument[];
+  documents: Array<{
+    document: SourceDocument;
+    chapters: DocumentChapter[];
+    generatedChapterIds: string[];
+  }>;
 }
 
 export interface PlayerParams {

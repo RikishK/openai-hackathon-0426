@@ -27,7 +27,6 @@ const DEFAULT_GENERATION_PROFILE: VoiceProfile = {
   speed: 1
 };
 const JOB_POLL_INTERVAL_MS = 1500;
-const JOB_POLL_TIMEOUT_MS = 120000;
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -88,6 +87,10 @@ export function ReaderPage({ documents, onGeneratedScope }: ReaderPageProps) {
   const [generationJobId, setGenerationJobId] = useState<string | null>(null);
   const [generationJobState, setGenerationJobState] = useState<JobState | null>(null);
   const [generationJobProgress, setGenerationJobProgress] = useState(0);
+  const [activeGenerationContext, setActiveGenerationContext] = useState<{
+    documentId: string;
+    chapterIds: string[];
+  } | null>(null);
   const [playerReloadToken, setPlayerReloadToken] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const latestSeekMsRef = useRef(0);
@@ -202,11 +205,13 @@ export function ReaderPage({ documents, onGeneratedScope }: ReaderPageProps) {
     [chapterOptions, generationMode, selectedGenerationChapterIds]
   );
 
+  const isGenerationInProgress = generationJobState === "queued" || generationJobState === "processing";
   const canEstimate =
     selectedDocumentId.length > 0 &&
     !isLoading &&
     !isEstimating &&
     !isGenerating &&
+    !isGenerationInProgress &&
     (generationChapterScope.mode === "all" || generationChapterScope.chapterIds.length > 0);
 
   useEffect(() => {
@@ -366,6 +371,7 @@ export function ReaderPage({ documents, onGeneratedScope }: ReaderPageProps) {
     setGenerationJobId(null);
     setGenerationJobState(null);
     setGenerationJobProgress(0);
+    setActiveGenerationContext(null);
     setErrorMessage(null);
   }
 
@@ -473,7 +479,7 @@ export function ReaderPage({ documents, onGeneratedScope }: ReaderPageProps) {
   }
 
   async function handleGenerateAudio() {
-    if (!selectedDocumentId || estimate === null || isGenerating) {
+    if (!selectedDocumentId || estimate === null || isGenerating || isGenerationInProgress) {
       return;
     }
 
@@ -482,6 +488,16 @@ export function ReaderPage({ documents, onGeneratedScope }: ReaderPageProps) {
     setGenerationJobProgress(0);
 
     try {
+      const chapterIdsForTracking =
+        generationChapterScope.mode === "all"
+          ? chapterOptions.map((chapter) => chapter.id)
+          : generationChapterScope.chapterIds;
+
+      setActiveGenerationContext({
+        documentId: selectedDocumentId,
+        chapterIds: chapterIdsForTracking
+      });
+
       const response = await generateAudio({
         documentId: selectedDocumentId,
         chapterScope: generationChapterScope,
@@ -490,35 +506,71 @@ export function ReaderPage({ documents, onGeneratedScope }: ReaderPageProps) {
       });
       setGenerationJobId(response.jobId);
       setGenerationJobState(response.state);
-
-      const pollStartedAt = Date.now();
-      while (Date.now() - pollStartedAt < JOB_POLL_TIMEOUT_MS) {
-        const status = await getGenerationJob(response.jobId);
-        setGenerationJobState(status.state);
-        setGenerationJobProgress(status.progress);
-
-        if (status.state === "done") {
-          onGeneratedScope(selectedDocumentId, generationChapterScope.chapterIds);
-          setPlayerReloadToken((current) => current + 1);
-          setErrorMessage(null);
-          return;
-        }
-
-        if (status.state === "failed") {
-          setErrorMessage(`Generation job ${status.jobId} failed`);
-          return;
-        }
-
-        await wait(JOB_POLL_INTERVAL_MS);
-      }
-
-      setErrorMessage(`Generation job ${response.jobId} timed out while polling`);
+      setErrorMessage(null);
     } catch (error) {
+      setGenerationJobId(null);
+      setGenerationJobState(null);
+      setActiveGenerationContext(null);
       setErrorMessage(`Unable to generate audio: ${getErrorMessage(error)}`);
     } finally {
       setIsGenerating(false);
     }
   }
+
+  useEffect(() => {
+    if (!generationJobId || !generationJobState || generationJobState === "done" || generationJobState === "failed") {
+      return;
+    }
+
+    const jobId = generationJobId;
+    let cancelled = false;
+
+    async function pollGenerationJob() {
+      while (!cancelled) {
+        try {
+          const status = await getGenerationJob(jobId);
+          if (cancelled) {
+            return;
+          }
+
+          setGenerationJobState(status.state);
+          setGenerationJobProgress(status.progress);
+
+          if (status.state === "done") {
+            if (activeGenerationContext) {
+              onGeneratedScope(activeGenerationContext.documentId, activeGenerationContext.chapterIds);
+              if (activeGenerationContext.documentId === selectedDocumentId) {
+                setPlayerReloadToken((current) => current + 1);
+              }
+            }
+
+            setActiveGenerationContext(null);
+            setErrorMessage(null);
+            return;
+          }
+
+          if (status.state === "failed") {
+            setActiveGenerationContext(null);
+            setErrorMessage(`Generation job ${status.jobId} failed`);
+            return;
+          }
+        } catch (error) {
+          if (!cancelled) {
+            setErrorMessage(`Unable to poll generation job: ${getErrorMessage(error)}`);
+          }
+          return;
+        }
+
+        await wait(JOB_POLL_INTERVAL_MS);
+      }
+    }
+
+    void pollGenerationJob();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeGenerationContext, generationJobId, generationJobState, onGeneratedScope, selectedDocumentId]);
 
   return (
     <section className="stack" aria-labelledby="reader-title">
@@ -550,7 +602,10 @@ export function ReaderPage({ documents, onGeneratedScope }: ReaderPageProps) {
       />
       <div className="card stack" aria-live="polite">
         <strong>Generate audio</strong>
-        <fieldset className="generation-scope" disabled={isLoading || isEstimating || isGenerating}>
+        <fieldset
+          className="generation-scope"
+          disabled={isLoading || isEstimating || isGenerating || isGenerationInProgress}
+        >
           <legend>Chapter scope</legend>
           <label className="row">
             <input
@@ -608,8 +663,12 @@ export function ReaderPage({ documents, onGeneratedScope }: ReaderPageProps) {
           <button type="button" onClick={handleEstimateGeneration} disabled={!canEstimate}>
             {isEstimating ? "Estimating..." : "Estimate"}
           </button>
-          <button type="button" onClick={() => void handleGenerateAudio()} disabled={estimate === null || isGenerating}>
-            {isGenerating ? "Generating..." : "Confirm + generate"}
+          <button
+            type="button"
+            onClick={() => void handleGenerateAudio()}
+            disabled={estimate === null || isGenerating || isGenerationInProgress}
+          >
+            {isGenerating || isGenerationInProgress ? "Generating..." : "Confirm + generate"}
           </button>
         </div>
         {estimate ? (
@@ -662,7 +721,7 @@ export function ReaderPage({ documents, onGeneratedScope }: ReaderPageProps) {
       </div>
       <JobProgress state={generationJobState ?? (isLoading ? "processing" : "done")} />
       {generationJobId ? <p>Job ID: {generationJobId}</p> : null}
-      {generationJobState === "processing" ? <p>Job progress: {generationJobProgress}%</p> : null}
+      {isGenerationInProgress ? <p>Job progress: {generationJobProgress}%</p> : null}
       {errorMessage ? <p role="alert">{errorMessage}</p> : null}
       <p className="reader-resume">Resume position: {Math.floor(resumePositionMs / 1000)}s</p>
       <A11yCueManager cue="reader_loaded" />
