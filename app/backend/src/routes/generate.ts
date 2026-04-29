@@ -1,51 +1,65 @@
-import type { GenerateResponse } from "@tts-reader/shared";
+import type { GenerateRequest, GenerateResponse } from "@tts-reader/shared";
 import type { FastifyPluginAsync } from "fastify";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { getStorageContext } from "../services/storage/db.js";
-
-function createProfileHash(model: string, voice: string, speed: number): string {
-  const source = `${model}:${voice}:${speed}`;
-  return createHash("sha256").update(source).digest("hex");
-}
+import { buildGenerationPlan } from "../services/tts/estimator.js";
+import { processGenerationJob } from "../services/tts/generator.js";
 
 export const registerGenerateRoutes: FastifyPluginAsync = async (app) => {
-  app.post<{ Reply: GenerateResponse | { error: string; message: string } }>("/api/generate", async (_, reply) => {
-    const storage = getStorageContext();
-    const documents = storage.repositories.documents.list();
-    const targetDocument = documents[0];
-    if (!targetDocument) {
-      return reply.code(400).send({
-        error: "DOCUMENT_REQUIRED",
-        message: "Ingest a document before creating a generation job"
-      });
-    }
-
-    const profileHash = createProfileHash("gpt-audio-1.5", "alloy", 1);
-
-    storage.repositories.generationProfiles.upsert({
-      id: `prof_${randomUUID()}`,
-      profileHash,
-      profile: {
-        model: "gpt-audio-1.5",
-        voice: "alloy",
-        speed: 1
+  app.post<{ Body: GenerateRequest; Reply: GenerateResponse | { error: string; message: string } }>(
+    "/api/generate",
+    async (request, reply) => {
+      if (!request.body.confirmedEstimate) {
+        return reply.code(400).send({
+          error: "CONFIRMATION_REQUIRED",
+          message: "Set confirmedEstimate=true before creating a generation job"
+        });
       }
-    });
 
-    const status = storage.repositories.generationJobs.create({
-      id: `job_${randomUUID()}`,
-      documentId: targetDocument.id,
-      chapterScope: "all",
-      chapterIds: ["all"],
-      profileHash,
-      estimatedChars: 0,
-      estimatedCostUsd: 0,
-      state: "queued"
-    });
+      let plan;
+      try {
+        plan = await buildGenerationPlan(request.body);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to create generation plan";
+        return reply.code(400).send({
+          error: "GENERATE_PLAN_FAILED",
+          message
+        });
+      }
 
-    return {
-      jobId: status.jobId,
-      state: status.state
-    };
-  });
+      const storage = getStorageContext();
+      const profile = storage.repositories.generationProfiles.upsert({
+        id: `prof_${randomUUID()}`,
+        profileHash: plan.profileHash,
+        profile: request.body.profile
+      });
+
+      const jobId = `job_${randomUUID()}`;
+      const jobChapterIds =
+        request.body.chapterScope.mode === "all"
+          ? [...new Set(plan.chunks.map((chunk) => chunk.chapterId))]
+          : request.body.chapterScope.chapterIds;
+      const status = storage.repositories.generationJobs.create({
+        id: jobId,
+        documentId: plan.documentId,
+        chapterScope: request.body.chapterScope.mode,
+        chapterIds: jobChapterIds,
+        profileHash: profile.profileHash,
+        estimatedChars: plan.estimatedChars,
+        estimatedCostUsd: plan.estimatedCostUsd,
+        state: "queued"
+      });
+
+      void processGenerationJob({
+        jobId,
+        plan,
+        profile: request.body.profile
+      });
+
+      return {
+        jobId: status.jobId,
+        state: status.state
+      };
+    }
+  );
 };

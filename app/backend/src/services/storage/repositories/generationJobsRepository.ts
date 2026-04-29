@@ -22,6 +22,10 @@ export interface CreateGenerationJobInput {
 export interface GenerationJobsRepository {
   create(input: CreateGenerationJobInput): JobStatus;
   getStatusById(jobId: string): JobStatus | null;
+  updateProgress(jobId: string, progress: number): void;
+  updateState(jobId: string, state: JobState): void;
+  markFailed(jobId: string, message: string): void;
+  clearAll(): void;
 }
 
 function toJobStatus(row: GenerationJobRow): JobStatus {
@@ -39,6 +43,22 @@ export function createGenerationJobsRepository(db: DatabaseSync): GenerationJobs
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const getStatusByIdStatement = db.prepare(`SELECT id, state, progress FROM generation_jobs WHERE id = ? LIMIT 1`);
+  const updateProgressStatement = db.prepare(
+    `UPDATE generation_jobs
+     SET progress = ?, updated_at = ?
+     WHERE id = ?`
+  );
+  const updateStateStatement = db.prepare(
+    `UPDATE generation_jobs
+     SET state = ?, updated_at = ?
+     WHERE id = ?`
+  );
+  const markFailedStatement = db.prepare(
+    `UPDATE generation_jobs
+     SET state = 'failed', error = ?, updated_at = ?
+     WHERE id = ?`
+  );
+  const clearAllStatement = db.prepare(`DELETE FROM generation_jobs`);
 
   return {
     create(input) {
@@ -71,6 +91,18 @@ export function createGenerationJobsRepository(db: DatabaseSync): GenerationJobs
       }
 
       return toJobStatus(row);
+    },
+    updateProgress(jobId, progress) {
+      updateProgressStatement.run(progress, nowIso(), jobId);
+    },
+    updateState(jobId, state) {
+      updateStateStatement.run(state, nowIso(), jobId);
+    },
+    markFailed(jobId, message) {
+      markFailedStatement.run(message, nowIso(), jobId);
+    },
+    clearAll() {
+      clearAllStatement.run();
     }
   };
 }

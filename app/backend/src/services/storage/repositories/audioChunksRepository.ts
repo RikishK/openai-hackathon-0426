@@ -1,6 +1,6 @@
 import type { AudioChunk } from "@tts-reader/shared";
 import type { DatabaseSync } from "node:sqlite";
-import { getDbRows, nowIso } from "./shared.js";
+import { getDbRows, getDbValue, nowIso } from "./shared.js";
 
 interface AudioChunkRow {
   id: string;
@@ -8,6 +8,13 @@ interface AudioChunkRow {
   file_path: string;
   duration_ms: number;
   status: string;
+}
+
+interface AudioChunkStatusRow {
+  id: string;
+  status: "pending" | "ready" | "failed";
+  file_path: string;
+  duration_ms: number;
 }
 
 export interface AudioChunkRecord {
@@ -30,6 +37,8 @@ export interface AudioChunkRecord {
 export interface AudioChunksRepository {
   upsert(record: AudioChunkRecord): void;
   listForDocument(documentId: string): AudioChunk[];
+  getById(id: string): AudioChunkStatusRow | null;
+  clearAll(): void;
 }
 
 function toAudioChunk(row: AudioChunkRow): AudioChunk {
@@ -68,6 +77,13 @@ export function createAudioChunksRepository(db: DatabaseSync): AudioChunksReposi
      WHERE doc_id = ?
      ORDER BY chapter_id ASC, chunk_index ASC`
   );
+  const getByIdStatement = db.prepare(
+    `SELECT id, status, file_path, duration_ms
+     FROM audio_chunks
+     WHERE id = ?
+     LIMIT 1`
+  );
+  const clearAllStatement = db.prepare(`DELETE FROM audio_chunks`);
 
   return {
     upsert(record) {
@@ -93,6 +109,12 @@ export function createAudioChunksRepository(db: DatabaseSync): AudioChunksReposi
     },
     listForDocument(documentId) {
       return getDbRows<AudioChunkRow>(listForDocumentStatement, documentId).map(toAudioChunk);
+    },
+    getById(id) {
+      return getDbValue<AudioChunkStatusRow>(getByIdStatement, id);
+    },
+    clearAll() {
+      clearAllStatement.run();
     }
   };
 }

@@ -1,6 +1,7 @@
 import type { IngestResponse, IngestTextRequest, IngestUrlRequest } from "@tts-reader/shared";
 import type { FastifyPluginAsync } from "fastify";
 import { randomUUID } from "node:crypto";
+import { persistDocumentSourceText } from "../services/ingestion/textIngest.js";
 import { getStorageContext } from "../services/storage/db.js";
 
 export const registerIngestRoutes: FastifyPluginAsync = async (app) => {
@@ -32,6 +33,8 @@ export const registerIngestRoutes: FastifyPluginAsync = async (app) => {
           detectionMethod: "manual"
         }))
       );
+
+      await persistDocumentSourceText(documentId, request.body.text);
 
       return {
         document,
@@ -70,6 +73,8 @@ export const registerIngestRoutes: FastifyPluginAsync = async (app) => {
         }))
       );
 
+      await persistDocumentSourceText(documentId, request.body.url);
+
       return {
         document,
         chapters,
@@ -100,6 +105,8 @@ export const registerIngestRoutes: FastifyPluginAsync = async (app) => {
         detectionMethod: "placeholder"
       }))
     );
+
+    await persistDocumentSourceText(documentId, "Uploaded PDF");
 
     return {
       document,

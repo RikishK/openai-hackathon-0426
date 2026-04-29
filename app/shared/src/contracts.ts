@@ -81,6 +81,13 @@ export interface EstimateResponse {
   warnings: string[];
 }
 
+export interface GenerateRequest {
+  documentId: string;
+  chapterScope: ChapterScope;
+  profile: VoiceProfile;
+  confirmedEstimate: boolean;
+}
+
 export interface GenerateResponse {
   jobId: string;
   state: JobState;

@@ -28,6 +28,7 @@ export interface CreateGenerationProfileInput {
 export interface GenerationProfilesRepository {
   upsert(input: CreateGenerationProfileInput): GenerationProfileRecord;
   getByHash(profileHash: string): GenerationProfileRecord | null;
+  clearAllUnusedByUiCues(): void;
 }
 
 function toGenerationProfileRecord(row: GenerationProfileRow): GenerationProfileRecord {
@@ -65,6 +66,10 @@ export function createGenerationProfilesRepository(db: DatabaseSync): Generation
      WHERE profile_hash = ?
      LIMIT 1`
   );
+  const clearAllUnusedByUiCuesStatement = db.prepare(
+    `DELETE FROM generation_profiles
+     WHERE profile_hash NOT IN (SELECT DISTINCT profile_hash FROM ui_cue_audio)`
+  );
 
   return {
     upsert(input) {
@@ -92,6 +97,9 @@ export function createGenerationProfilesRepository(db: DatabaseSync): Generation
       }
 
       return toGenerationProfileRecord(row);
+    },
+    clearAllUnusedByUiCues() {
+      clearAllUnusedByUiCuesStatement.run();
     }
   };
 }

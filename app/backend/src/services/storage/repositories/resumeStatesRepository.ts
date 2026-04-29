@@ -16,6 +16,7 @@ export interface ResumeStatesRepository {
   save(record: ResumeStateRecord): void;
   getPlaybackPosition(record: Omit<ResumeStateRecord, "playbackPositionMs">): number | null;
   getLatestPlaybackPositionByDocument(documentId: string): number | null;
+  clearAll(): void;
 }
 
 export function createResumeStatesRepository(db: DatabaseSync): ResumeStatesRepository {
@@ -39,6 +40,7 @@ export function createResumeStatesRepository(db: DatabaseSync): ResumeStatesRepo
      ORDER BY updated_at DESC
      LIMIT 1`
   );
+  const clearAllStatement = db.prepare(`DELETE FROM resume_states`);
 
   return {
     save(record) {
@@ -70,6 +72,9 @@ export function createResumeStatesRepository(db: DatabaseSync): ResumeStatesRepo
       }
 
       return row.playback_position_ms;
+    },
+    clearAll() {
+      clearAllStatement.run();
     }
   };
 }
